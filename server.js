@@ -96,7 +96,10 @@ function autoFriendMembers(roomCode, newUsername) {
 }
 
 // ─── SECURITY MIDDLEWARE ─────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "unsafe-none" },
+}));
 
 app.use(cors({
   origin: (origin, callback) => {
