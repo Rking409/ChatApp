@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { WebSocketServer } = require('ws');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -7,12 +8,14 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const multer = require('multer');
 const { OAuth2Client } = require('google-auth-library');
 const {
   userQueries,
   friendQueries,
   roomQueries,
   messageQueries,
+  dailyPhotoQueries,
   generateRoomCode,
 } = require('./db');
 
@@ -42,6 +45,56 @@ if (ALLOWED_ORIGINS.length === 0) {
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// ─── MULTER: profile picture uploads ──────────────────────────────────────────
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const storage = multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    cb(null, `${req.username}_${Date.now()}${ext}`);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error('Only images allowed (jpg, png, gif, webp)'));
+  },
+});
+
+// ─── MULTER: daily photo uploads ──────────────────────────────────────────────
+const DAILY_UPLOAD_DIR = path.join(__dirname, 'uploads', 'daily');
+const dailyStorage = multer.diskStorage({
+  destination: DAILY_UPLOAD_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    cb(null, `${req.username}_${Date.now()}${ext}`);
+  },
+});
+const dailyUpload = multer({
+  storage: dailyStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error('Only images allowed (jpg, png, gif, webp)'));
+  },
+});
+
+// ─── HELPER: auto-friend room members ─────────────────────────────────────────
+function autoFriendMembers(roomCode, newUsername) {
+  const others = roomQueries.getMembersExcept.all(roomCode, newUsername);
+  const now = Date.now();
+  for (const member of others) {
+    friendQueries.insertAccepted.run(newUsername, member.username, now);
+    friendQueries.insertAccepted.run(member.username, newUsername, now);
+  }
+}
+
 // ─── SECURITY MIDDLEWARE ─────────────────────────────────────────────────────
 app.use(helmet());
 
@@ -54,6 +107,7 @@ app.use(cors({
   },
 }));
 
+app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(express.json({ limit: '100kb' })); // cap body size — cheap DoS protection
 
 // General API rate limit — generous, just stops abuse/scripted hammering.
@@ -242,7 +296,8 @@ app.post('/auth/register', authLimiter, async (req, res) => {
   const hash = bcrypt.hashSync(password, 10);
   userQueries.create.run(username, hash);
   const token = signToken(username);
-  res.json({ ok: true, username, token });
+  const user = userQueries.findByUsername.get(username);
+  res.json({ ok: true, username, token, avatar_url: user.avatar_url || null });
 });
 
 app.post('/auth/login', authLimiter, (req, res) => {
@@ -255,7 +310,7 @@ app.post('/auth/login', authLimiter, (req, res) => {
     return res.status(401).json({ error: 'Wrong username or password' });
   }
   const token = signToken(user.username);
-  res.json({ ok: true, username: user.username, token });
+  res.json({ ok: true, username: user.username, token, avatar_url: user.avatar_url || null });
 });
 
 // ─── AUTH: Google sign-in ─────────────────────────────────────────────────────
@@ -281,7 +336,7 @@ app.post('/auth/google', authLimiter, async (req, res) => {
   const existing = userQueries.findByGoogleId.get(googleId);
   if (existing) {
     const token = signToken(existing.username);
-    return res.json({ ok: true, isNew: false, username: existing.username, token });
+    return res.json({ ok: true, isNew: false, username: existing.username, token, avatar_url: existing.avatar_url || null });
   }
 
   const pendingToken = jwt.sign(
@@ -322,7 +377,8 @@ app.post('/auth/google/complete', authLimiter, (req, res) => {
   userQueries.createWithGoogle.run(username, placeholderPassword, payload.googleId);
 
   const token = signToken(username);
-  res.json({ ok: true, username, token });
+  const user = userQueries.findByUsername.get(username);
+  res.json({ ok: true, username, token, avatar_url: user.avatar_url || null });
 });
 
 // ─── FRIENDS ──────────────────────────────────────────────────────────────────
@@ -387,16 +443,35 @@ app.get('/rooms', requireAuth, (req, res) => {
   res.json({ rooms });
 });
 
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+const DEFAULT_ROOM_COLOR = '#3B82F6';
+
 app.post('/rooms/create', requireAuth, (req, res) => {
-  const { name } = req.body || {};
+  const { name, color } = req.body || {};
   if (!name || typeof name !== 'string' || !name.trim() || name.trim().length > MAX_ROOM_NAME_LEN) {
     return res.status(400).json({ error: `Room name required (max ${MAX_ROOM_NAME_LEN} chars)` });
   }
+  const roomColor = (typeof color === 'string' && HEX_COLOR_RE.test(color)) ? color : DEFAULT_ROOM_COLOR;
   const code = generateRoomCode();
-  roomQueries.create.run(code, name.trim(), req.username);
+  roomQueries.create.run(code, name.trim(), req.username, roomColor);
   roomQueries.addMember.run(code, req.username, Date.now());
+  autoFriendMembers(code, req.username);
   const room = roomQueries.findByCode.get(code);
   res.json({ ok: true, room: { ...room, member_count: 1 } });
+});
+
+app.post('/rooms/:code/color', requireAuth, (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const { color } = req.body || {};
+  if (typeof color !== 'string' || !HEX_COLOR_RE.test(color)) {
+    return res.status(400).json({ error: 'Color must be a hex value like #3B82F6' });
+  }
+  const member = roomQueries.getMember.get(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+  const room = roomQueries.findByCode.get(code);
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+  roomQueries.setColor.run(color, code);
+  res.json({ ok: true, color });
 });
 
 app.post('/rooms/join', requireAuth, (req, res) => {
@@ -408,9 +483,11 @@ app.post('/rooms/join', requireAuth, (req, res) => {
   const room = roomQueries.findByCode.get(code);
   if (!room) return res.status(404).json({ error: 'No room with that code.' });
   roomQueries.addMember.run(code, req.username, Date.now());
+  autoFriendMembers(code, req.username);
   const memberCount = roomQueries.getMembers.all(code).length;
   res.json({ ok: true, room: { ...room, member_count: memberCount } });
 });
+
 
 app.get('/rooms/:code/messages', requireAuth, (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
@@ -426,6 +503,85 @@ app.get('/rooms/:code', requireAuth, (req, res) => {
   if (!room) return res.status(404).json({ error: 'Room not found.' });
   const members = roomQueries.getMembers.all(code);
   res.json({ room: { ...room, members, member_count: members.length } });
+});
+
+// ─── USERS: profile picture upload ────────────────────────────────────────────
+
+app.get('/users/me', requireAuth, (req, res) => {
+  const user = userQueries.findByUsername.get(req.username);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ username: user.username, avatar_url: user.avatar_url || null });
+});
+
+app.post('/users/avatar', requireAuth, (req, res, next) => {
+  upload.single('avatar')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Image must be under 5 MB' });
+      }
+      return res.status(400).json({ error: err.message || 'Upload failed' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+    const avatarUrl = `/uploads/${req.file.filename}`;
+    userQueries.setAvatarUrl.run(avatarUrl, req.username);
+    res.json({ ok: true, avatar_url: avatarUrl });
+  });
+});
+
+// ─── DAILY MOMENTS ─────────────────────────────────────────────────────────────
+
+app.post('/rooms/:code/photos', requireAuth, (req, res, next) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const member = roomQueries.getMember.get(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+  dailyUpload.single('photo')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Image must be under 10 MB' });
+      }
+      return res.status(400).json({ error: err.message || 'Upload failed' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+    const photoUrl = `/uploads/daily/${req.file.filename}`;
+    const now = Date.now();
+    const dayDate = new Date().toISOString().slice(0, 10);
+    dailyPhotoQueries.insert.run(code, req.username, photoUrl, now, dayDate);
+    res.json({ ok: true, photo_url: photoUrl, taken_at: now });
+  });
+});
+
+app.get('/rooms/:code/photos', requireAuth, (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const member = roomQueries.getMember.get(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const photos = dailyPhotoQueries.getForRoomAndDay.all(code, date);
+  res.json({ photos });
+});
+
+app.get('/moments', requireAuth, (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const photos = dailyPhotoQueries.getForUserToday.all(req.username, today);
+  // Group by room_code
+  const rooms = {};
+  for (const p of photos) {
+    if (!rooms[p.room_code]) rooms[p.room_code] = { room_code: p.room_code, photos: [] };
+    rooms[p.room_code].photos.push(p);
+  }
+  // Fetch room names
+  const result = [];
+  for (const code of Object.keys(rooms)) {
+    const room = roomQueries.findByCode.get(code);
+    if (room) {
+      result.push({
+        room_code: code,
+        room_name: room.name,
+        room_color: room.color,
+        photos: rooms[code].photos,
+      });
+    }
+  }
+  res.json({ rooms: result });
 });
 
 // ─── HEALTH ───────────────────────────────────────────────────────────────────

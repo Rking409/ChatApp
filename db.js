@@ -52,6 +52,17 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_code, sent_at);
   CREATE INDEX IF NOT EXISTS idx_friends_users ON friends(from_user, to_user);
+
+  CREATE TABLE IF NOT EXISTS daily_photos (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_code  TEXT    NOT NULL,
+    username   TEXT    NOT NULL COLLATE NOCASE,
+    photo_url  TEXT    NOT NULL,
+    taken_at   INTEGER NOT NULL,
+    day_date   TEXT    NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_daily_photos_room_day ON daily_photos(room_code, day_date);
 `);
 
 // ─── MIGRATION: add google_id column for Google sign-in users ───────────────
@@ -60,6 +71,19 @@ const hasGoogleId = userCols.some(c => c.name === 'google_id');
 if (!hasGoogleId) {
   db.exec(`ALTER TABLE users ADD COLUMN google_id TEXT`);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`);
+}
+
+// ─── MIGRATION: add avatar_url column for profile pictures ──────────────────
+const hasAvatarUrl = userCols.some(c => c.name === 'avatar_url');
+if (!hasAvatarUrl) {
+  db.exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`);
+}
+
+// ─── MIGRATION: add color column for per-room custom colors ─────────────────
+const roomCols = db.prepare("PRAGMA table_info(rooms)").all();
+const hasColor = roomCols.some(c => c.name === 'color');
+if (!hasColor) {
+  db.exec(`ALTER TABLE rooms ADD COLUMN color TEXT NOT NULL DEFAULT '#3B82F6'`);
 }
 
 // ─── USER QUERIES ─────────────────────────────────────────────────────────────
@@ -72,6 +96,7 @@ const userQueries = {
   createWithGoogle: db.prepare(
     'INSERT INTO users (username, password, google_id) VALUES (?, ?, ?)'
   ),
+  setAvatarUrl: db.prepare('UPDATE users SET avatar_url = ? WHERE username = ?'),
 };
 
 // ─── FRIEND QUERIES ───────────────────────────────────────────────────────────
@@ -100,12 +125,15 @@ const friendQueries = {
     SELECT to_user AS target FROM friends
     WHERE from_user = ? AND status = 'pending'
   `),
+  insertAccepted: db.prepare(`
+    INSERT OR IGNORE INTO friends (from_user, to_user, status, created_at) VALUES (?, ?, 'accepted', ?)
+  `),
 };
 
 // ─── ROOM QUERIES ─────────────────────────────────────────────────────────────
 
 const roomQueries = {
-  create: db.prepare('INSERT INTO rooms (code, name, owner) VALUES (?, ?, ?)'),
+  create: db.prepare('INSERT INTO rooms (code, name, owner, color) VALUES (?, ?, ?, ?)'),
   findByCode: db.prepare('SELECT * FROM rooms WHERE code = ?'),
   codeExists: db.prepare('SELECT 1 FROM rooms WHERE code = ?'),
   addMember: db.prepare(`
@@ -120,6 +148,21 @@ const roomQueries = {
     JOIN room_members rm2 ON rm2.room_code = r.code
     GROUP BY r.code
     ORDER BY r.created_at DESC
+  `),
+  setColor: db.prepare('UPDATE rooms SET color = ? WHERE code = ?'),
+  getMembersExcept: db.prepare('SELECT username FROM room_members WHERE room_code = ? AND username != ? COLLATE NOCASE'),
+};
+
+// ─── DAILY PHOTO QUERIES ───────────────────────────────────────────────────────
+
+const dailyPhotoQueries = {
+  insert: db.prepare('INSERT INTO daily_photos (room_code, username, photo_url, taken_at, day_date) VALUES (?, ?, ?, ?, ?)'),
+  getForRoomAndDay: db.prepare('SELECT * FROM daily_photos WHERE room_code = ? AND day_date = ? ORDER BY taken_at ASC'),
+  getForUserToday: db.prepare(`
+    SELECT dp.* FROM daily_photos dp
+    JOIN room_members rm ON rm.room_code = dp.room_code AND rm.username = ?
+    WHERE dp.day_date = ?
+    ORDER BY dp.taken_at DESC
   `),
 };
 
@@ -156,5 +199,6 @@ module.exports = {
   friendQueries,
   roomQueries,
   messageQueries,
+  dailyPhotoQueries,
   generateRoomCode,
 };
