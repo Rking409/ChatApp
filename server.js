@@ -1,3 +1,4 @@
+require('express-async-errors');
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -19,6 +20,7 @@ const {
   keyQueries,
   adminQueries,
   generateRoomCode,
+  initSchema,
 } = require('./db');
 
 const app = express();
@@ -93,12 +95,12 @@ const dailyUpload = multer({
 });
 
 // ─── HELPER: auto-friend room members ─────────────────────────────────────────
-function autoFriendMembers(roomCode, newUsername) {
-  const others = roomQueries.getMembersExcept.all(roomCode, newUsername);
+async function autoFriendMembers(roomCode, newUsername) {
+  const others = await roomQueries.getMembersExcept(roomCode, newUsername);
   const now = Date.now();
   for (const member of others) {
-    friendQueries.insertAccepted.run(newUsername, member.username, now);
-    friendQueries.insertAccepted.run(member.username, newUsername, now);
+    await friendQueries.insertAccepted(newUsername, member.username, now);
+    await friendQueries.insertAccepted(member.username, newUsername, now);
   }
 }
 
@@ -141,7 +143,7 @@ const authLimiter = rateLimit({
 // ─── AUTH MIDDLEWARE (JWT-based) ─────────────────────────────────────────────
 // Frontend sends: Authorization: Bearer <jwt>
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const auth = req.headers['authorization'];
   if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -149,7 +151,7 @@ function requireAuth(req, res, next) {
   try {
     const token = auth.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = userQueries.findByUsername.get(payload.username);
+    const user = await userQueries.findByUsername(payload.username);
     if (!user) return res.status(401).json({ error: 'User no longer exists' });
     req.username = user.username;
     next();
@@ -201,7 +203,7 @@ wss.on('connection', (ws, req) => {
     return false;
   }
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.type !== 'string') return;
@@ -210,7 +212,7 @@ wss.on('connection', (ws, req) => {
     if (msg.type === 'auth') {
       try {
         const payload = jwt.verify(msg.token, JWT_SECRET);
-        const user = userQueries.findByUsername.get(payload.username);
+        const user = await userQueries.findByUsername(payload.username);
         if (!user) {
           ws.send(JSON.stringify({ type: 'error', error: 'Invalid session' }));
           return;
@@ -237,7 +239,7 @@ wss.on('connection', (ws, req) => {
     if (msg.type === 'subscribe') {
       const code = typeof msg.roomCode === 'string' ? msg.roomCode.slice(0, MAX_ROOM_CODE_LEN) : '';
       if (!code) return;
-      const member = roomQueries.getMember.get(code, wsUsername);
+      const member = await roomQueries.getMember(code, wsUsername);
       if (!member) {
         ws.send(JSON.stringify({ type: 'error', error: 'Not a member of this room' }));
         return;
@@ -258,14 +260,13 @@ wss.on('connection', (ws, req) => {
       const code = typeof msg.roomCode === 'string' ? msg.roomCode.slice(0, MAX_ROOM_CODE_LEN) : '';
       const text = typeof msg.text === 'string' ? msg.text.trim() : '';
       if (!code || !text || text.length > MAX_MESSAGE_LEN) return;
-      const member = roomQueries.getMember.get(code, wsUsername);
+      const member = await roomQueries.getMember(code, wsUsername);
       if (!member) return;
 
       const sentAt = Date.now();
       const encrypted = msg.encrypted ? 1 : 0;
       const encIv = msg.encIv || null;
-      const result = messageQueries.insertEncrypted.run(code, wsUsername, text, sentAt, encrypted, encIv);
-      const msgId = Number(result.lastInsertRowid);
+      const msgId = await messageQueries.insertEncrypted(code, wsUsername, text, sentAt, encrypted, encIv);
 
       const packet = {
         type: 'message',
@@ -328,22 +329,22 @@ app.post('/auth/register', authLimiter, async (req, res) => {
   if (typeof password !== 'string' || password.length < 4 || password.length > 200) {
     return res.status(400).json({ error: 'Password must be 4-200 characters' });
   }
-  if (userQueries.exists.get(username)) {
+  if (await userQueries.exists(username)) {
     return res.status(409).json({ error: 'Username already taken' });
   }
   const hash = bcrypt.hashSync(password, 10);
-  userQueries.create.run(username, hash);
+  await userQueries.create(username, hash);
   const token = signToken(username);
-  const user = userQueries.findByUsername.get(username);
+  const user = await userQueries.findByUsername(username);
   res.json({ ok: true, username, token, avatar_url: user.avatar_url || null });
 });
 
-app.post('/auth/login', authLimiter, (req, res) => {
+app.post('/auth/login', authLimiter, async (req, res) => {
   const { username, password } = req.body || {};
   if (typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'Username and password required' });
   }
-  const user = userQueries.findByUsername.get(username);
+  const user = await userQueries.findByUsername(username);
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Wrong username or password' });
   }
@@ -371,7 +372,7 @@ app.post('/auth/google', authLimiter, async (req, res) => {
   const googleId = payload.sub;
   const email = payload.email;
 
-  const existing = userQueries.findByGoogleId.get(googleId);
+  const existing = await userQueries.findByGoogleId(googleId);
   if (existing) {
     const token = signToken(existing.username);
     return res.json({ ok: true, isNew: false, username: existing.username, token, avatar_url: existing.avatar_url || null });
@@ -385,7 +386,7 @@ app.post('/auth/google', authLimiter, async (req, res) => {
   res.json({ ok: true, isNew: true, email, pendingToken });
 });
 
-app.post('/auth/google/complete', authLimiter, (req, res) => {
+app.post('/auth/google/complete', authLimiter, async (req, res) => {
   const { pendingToken, username } = req.body || {};
   if (!pendingToken || !username) {
     return res.status(400).json({ error: 'pendingToken and username required' });
@@ -404,83 +405,83 @@ app.post('/auth/google/complete', authLimiter, (req, res) => {
     return res.status(400).json({ error: 'Invalid pending token' });
   }
 
-  if (userQueries.exists.get(username)) {
+  if (await userQueries.exists(username)) {
     return res.status(409).json({ error: 'Username already taken' });
   }
-  if (userQueries.findByGoogleId.get(payload.googleId)) {
+  if (await userQueries.findByGoogleId(payload.googleId)) {
     return res.status(409).json({ error: 'This Google account is already linked to a user' });
   }
 
   const placeholderPassword = bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10);
-  userQueries.createWithGoogle.run(username, placeholderPassword, payload.googleId);
+  await userQueries.createWithGoogle(username, placeholderPassword, payload.googleId);
 
   const token = signToken(username);
-  const user = userQueries.findByUsername.get(username);
+  const user = await userQueries.findByUsername(username);
   res.json({ ok: true, username, token, avatar_url: user.avatar_url || null });
 });
 
 // ─── FRIENDS ──────────────────────────────────────────────────────────────────
 
-app.get('/friends', requireAuth, (req, res) => {
+app.get('/friends', requireAuth, async (req, res) => {
   const me = req.username;
-  const accepted = friendQueries.getAccepted.all(me, me, me).map(r => r.friend);
-  const incoming = friendQueries.getIncoming.all(me).map(r => r.requester);
-  const outgoing = friendQueries.getOutgoing.all(me).map(r => r.target);
+  const accepted = (await friendQueries.getAccepted(me)).map(r => r.friend);
+  const incoming = (await friendQueries.getIncoming(me)).map(r => r.requester);
+  const outgoing = (await friendQueries.getOutgoing(me)).map(r => r.target);
   res.json({ accepted, incoming, outgoing });
 });
 
-app.post('/friends/request', requireAuth, (req, res) => {
+app.post('/friends/request', requireAuth, async (req, res) => {
   const me = req.username;
   const { toUser } = req.body || {};
   if (!toUser || typeof toUser !== 'string' || !isValidUsername(toUser)) {
     return res.status(400).json({ error: 'Valid toUser required' });
   }
   if (toUser.toLowerCase() === me.toLowerCase()) return res.status(400).json({ error: "That's you." });
-  if (!userQueries.exists.get(toUser)) return res.status(404).json({ error: "No user with that username." });
+  if (!await userQueries.exists(toUser)) return res.status(404).json({ error: "No user with that username." });
 
-  const existing = friendQueries.getRelation.get(me, toUser, toUser, me);
+  const existing = await friendQueries.getRelation(me, toUser);
   if (existing) {
     if (existing.status === 'accepted') return res.status(400).json({ error: 'Already friends.' });
     if (existing.from_user.toLowerCase() === toUser.toLowerCase() && existing.status === 'pending') {
-      friendQueries.updateStatus.run('accepted', existing.from_user, existing.to_user);
+      await friendQueries.updateStatus('accepted', existing.from_user, existing.to_user);
       return res.json({ ok: true, autoAccepted: true });
     }
     if (existing.status === 'pending') return res.status(400).json({ error: 'Request already sent.' });
   }
 
-  friendQueries.sendRequest.run(me, toUser);
+  await friendQueries.sendRequest(me, toUser);
   res.json({ ok: true });
 });
 
-app.post('/friends/accept', requireAuth, (req, res) => {
+app.post('/friends/accept', requireAuth, async (req, res) => {
   const me = req.username;
   const { fromUser } = req.body || {};
   if (!fromUser || typeof fromUser !== 'string') return res.status(400).json({ error: 'fromUser required' });
-  const rel = friendQueries.getRelation.get(fromUser, me, me, fromUser);
+  const rel = await friendQueries.getRelation(fromUser, me);
   if (!rel || rel.status !== 'pending') return res.status(400).json({ error: 'No pending request found.' });
   if (rel.to_user.toLowerCase() !== me.toLowerCase()) return res.status(403).json({ error: 'Not your request.' });
-  friendQueries.updateStatus.run('accepted', rel.from_user, rel.to_user);
+  await friendQueries.updateStatus('accepted', rel.from_user, rel.to_user);
   res.json({ ok: true });
 });
 
-app.post('/friends/decline', requireAuth, (req, res) => {
+app.post('/friends/decline', requireAuth, async (req, res) => {
   const me = req.username;
   const { fromUser } = req.body || {};
   if (!fromUser || typeof fromUser !== 'string') return res.status(400).json({ error: 'fromUser required' });
-  const rel = friendQueries.getRelation.get(fromUser, me, me, fromUser);
+  const rel = await friendQueries.getRelation(fromUser, me);
   if (!rel || rel.status !== 'pending') return res.status(400).json({ error: 'No pending request found.' });
   if (rel.to_user.toLowerCase() !== me.toLowerCase()) return res.status(403).json({ error: 'Not your request.' });
-  friendQueries.updateStatus.run('declined', rel.from_user, rel.to_user);
+  await friendQueries.updateStatus('declined', rel.from_user, rel.to_user);
   res.json({ ok: true });
 });
 
 // ─── ROOMS ────────────────────────────────────────────────────────────────────
 
-app.get('/rooms', requireAuth, (req, res) => {
-  const rooms = roomQueries.getUserRooms.all(req.username);
+app.get('/rooms', requireAuth, async (req, res) => {
+  const rooms = await roomQueries.getUserRooms(req.username);
   // Attach unread counts
   for (const room of rooms) {
-    const unread = messageQueries.getUnreadCount.get(req.username, room.code);
+    const unread = await messageQueries.getUnreadCount(req.username, room.code);
     room.unread = unread ? unread.count : 0;
   }
   res.json({ rooms });
@@ -489,55 +490,55 @@ app.get('/rooms', requireAuth, (req, res) => {
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const DEFAULT_ROOM_COLOR = '#3B82F6';
 
-app.post('/rooms/create', requireAuth, (req, res) => {
+app.post('/rooms/create', requireAuth, async (req, res) => {
   const { name, color } = req.body || {};
   if (!name || typeof name !== 'string' || !name.trim() || name.trim().length > MAX_ROOM_NAME_LEN) {
     return res.status(400).json({ error: `Room name required (max ${MAX_ROOM_NAME_LEN} chars)` });
   }
   const roomColor = (typeof color === 'string' && HEX_COLOR_RE.test(color)) ? color : DEFAULT_ROOM_COLOR;
-  const code = generateRoomCode();
-  roomQueries.create.run(code, name.trim(), req.username, roomColor);
-  roomQueries.addMember.run(code, req.username, Date.now());
-  autoFriendMembers(code, req.username);
-  const room = roomQueries.findByCode.get(code);
+  const code = await generateRoomCode();
+  await roomQueries.create(code, name.trim(), req.username, roomColor);
+  await roomQueries.addMember(code, req.username, Date.now());
+  await autoFriendMembers(code, req.username);
+  const room = await roomQueries.findByCode(code);
   res.json({ ok: true, room: { ...room, member_count: 1 } });
 });
 
-app.post('/rooms/:code/color', requireAuth, (req, res) => {
+app.post('/rooms/:code/color', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
   const { color } = req.body || {};
   if (typeof color !== 'string' || !HEX_COLOR_RE.test(color)) {
     return res.status(400).json({ error: 'Color must be a hex value like #3B82F6' });
   }
-  const member = roomQueries.getMember.get(code, req.username);
+  const member = await roomQueries.getMember(code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
-  const room = roomQueries.findByCode.get(code);
+  const room = await roomQueries.findByCode(code);
   if (!room) return res.status(404).json({ error: 'Room not found.' });
-  roomQueries.setColor.run(color, code);
+  await roomQueries.setColor(color, code);
   res.json({ ok: true, color });
 });
 
-app.post('/rooms/join', requireAuth, (req, res) => {
+app.post('/rooms/join', requireAuth, async (req, res) => {
   const raw = req.body && req.body.code;
   if (typeof raw !== 'string' || !raw.trim() || raw.trim().length > MAX_ROOM_CODE_LEN) {
     return res.status(400).json({ error: 'Valid code required' });
   }
   const code = raw.trim().toUpperCase();
-  const room = roomQueries.findByCode.get(code);
+  const room = await roomQueries.findByCode(code);
   if (!room) return res.status(404).json({ error: 'No room with that code.' });
-  roomQueries.addMember.run(code, req.username, Date.now());
-  autoFriendMembers(code, req.username);
-  const memberCount = roomQueries.getMembers.all(code).length;
-  res.json({ ok: true, room: { ...room, member_count: memberCount } });
+  await roomQueries.addMember(code, req.username, Date.now());
+  await autoFriendMembers(code, req.username);
+  const members = await roomQueries.getMembers(code);
+  res.json({ ok: true, room: { ...room, member_count: members.length } });
 });
 
 
-app.get('/rooms/:code/messages', requireAuth, (req, res) => {
+app.get('/rooms/:code/messages', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  const member = roomQueries.getMember.get(code, req.username);
+  const member = await roomQueries.getMember(code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
-  const messages = messageQueries.getForUser.all(req.username, code);
-  const reactions = messageQueries.getReactionsForMessages.all(code);
+  const messages = await messageQueries.getForUser(req.username, code);
+  const reactions = await messageQueries.getReactionsForMessages(code);
   // Group reactions by message_id
   const reactionsByMsg = {};
   for (const r of reactions) {
@@ -547,24 +548,24 @@ app.get('/rooms/:code/messages', requireAuth, (req, res) => {
   res.json({ messages, reactionsByMsg });
 });
 
-app.get('/rooms/:code', requireAuth, (req, res) => {
+app.get('/rooms/:code', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  const room = roomQueries.findByCode.get(code);
+  const room = await roomQueries.findByCode(code);
   if (!room) return res.status(404).json({ error: 'Room not found.' });
-  const members = roomQueries.getMembers.all(code);
+  const members = await roomQueries.getMembers(code);
   res.json({ room: { ...room, members, member_count: members.length } });
 });
 
 // ─── USERS: profile picture upload ────────────────────────────────────────────
 
-app.get('/users/me', requireAuth, (req, res) => {
-  const user = userQueries.findByUsername.get(req.username);
+app.get('/users/me', requireAuth, async (req, res) => {
+  const user = await userQueries.findByUsername(req.username);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ username: user.username, avatar_url: user.avatar_url || null });
 });
 
 app.post('/users/avatar', requireAuth, (req, res, next) => {
-  upload.single('avatar')(req, res, (err) => {
+  upload.single('avatar')(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: 'Image must be under 5 MB' });
@@ -573,62 +574,62 @@ app.post('/users/avatar', requireAuth, (req, res, next) => {
     }
     if (!req.file) return res.status(400).json({ error: 'No file provided' });
     const avatarUrl = `/uploads/${req.file.filename}`;
-    userQueries.setAvatarUrl.run(avatarUrl, req.username);
+    await userQueries.setAvatarUrl(avatarUrl, req.username);
     res.json({ ok: true, avatar_url: avatarUrl });
   });
 });
 
 // ─── E2E ENCRYPTION KEYS ───────────────────────────────────────────────────────
 
-app.post('/users/key', requireAuth, (req, res) => {
+app.post('/users/key', requireAuth, async (req, res) => {
   const { public_key } = req.body || {};
   if (!public_key || typeof public_key !== 'string') return res.status(400).json({ error: 'public_key required' });
-  keyQueries.setPublicKey.run(req.username, public_key, Date.now());
+  await keyQueries.setPublicKey(req.username, public_key, Date.now());
   res.json({ ok: true });
 });
 
-app.get('/users/:username/key', requireAuth, (req, res) => {
-  const key = keyQueries.getPublicKey.get(req.params.username);
+app.get('/users/:username/key', requireAuth, async (req, res) => {
+  const key = await keyQueries.getPublicKey(req.params.username);
   if (!key) return res.status(404).json({ error: 'No key found' });
   res.json({ public_key: key.public_key });
 });
 
-app.post('/rooms/:code/keys', requireAuth, (req, res) => {
+app.post('/rooms/:code/keys', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  const member = roomQueries.getMember.get(code, req.username);
+  const member = await roomQueries.getMember(code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member' });
   const { encrypted_key } = req.body || {};
   if (!encrypted_key || typeof encrypted_key !== 'string') return res.status(400).json({ error: 'encrypted_key required' });
-  keyQueries.storeRoomKey.run(code, req.username, encrypted_key);
+  await keyQueries.storeRoomKey(code, req.username, encrypted_key);
   res.json({ ok: true });
 });
 
-app.get('/rooms/:code/keys', requireAuth, (req, res) => {
+app.get('/rooms/:code/keys', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  const member = roomQueries.getMember.get(code, req.username);
+  const member = await roomQueries.getMember(code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member' });
-  const keys = keyQueries.getRoomKeys.all(code);
+  const keys = await keyQueries.getRoomKeys(code);
   res.json({ keys });
 });
 
 // ─── ADMIN ───────────────────────────────────────────────────────────────────────
 
-app.get('/admin/stats', requireAuth, requireAdmin, (req, res) => {
+app.get('/admin/stats', requireAuth, requireAdmin, async (req, res) => {
   res.json({
-    users: adminQueries.countUsers.get().count,
-    rooms: adminQueries.countRooms.get().count,
-    messages: adminQueries.countMessages.get().count,
-    photos: adminQueries.countPhotos.get().count,
+    users: (await adminQueries.countUsers()).count,
+    rooms: (await adminQueries.countRooms()).count,
+    messages: (await adminQueries.countMessages()).count,
+    photos: (await adminQueries.countPhotos()).count,
   });
 });
 
-app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
-  res.json({ users: adminQueries.getAllUsers.all() });
+app.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+  res.json({ users: await adminQueries.getAllUsers() });
 });
 
-app.get('/admin/rooms', requireAuth, requireAdmin, (req, res) => {
-  const rooms = adminQueries.getAllRooms.all();
-  const members = adminQueries.getAllMembers.all();
+app.get('/admin/rooms', requireAuth, requireAdmin, async (req, res) => {
+  const rooms = await adminQueries.getAllRooms();
+  const members = await adminQueries.getAllMembers();
   const membersByRoom = {};
   for (const m of members) {
     if (!membersByRoom[m.room_code]) membersByRoom[m.room_code] = [];
@@ -638,54 +639,56 @@ app.get('/admin/rooms', requireAuth, requireAdmin, (req, res) => {
   res.json({ rooms });
 });
 
-app.get('/admin/messages', requireAuth, requireAdmin, (req, res) => {
-  res.json({ messages: adminQueries.getAllMessages.all() });
+app.get('/admin/messages', requireAuth, requireAdmin, async (req, res) => {
+  res.json({ messages: await adminQueries.getAllMessages() });
 });
 
-app.get('/admin/friends', requireAuth, requireAdmin, (req, res) => {
-  res.json({ friends: adminQueries.getAllFriends.all() });
+app.get('/admin/friends', requireAuth, requireAdmin, async (req, res) => {
+  res.json({ friends: await adminQueries.getAllFriends() });
 });
 
-app.get('/admin/photos', requireAuth, requireAdmin, (req, res) => {
-  res.json({ photos: adminQueries.getAllPhotos.all() });
+app.get('/admin/photos', requireAuth, requireAdmin, async (req, res) => {
+  res.json({ photos: await adminQueries.getAllPhotos() });
 });
 
 // ─── DAILY MOMENTS ─────────────────────────────────────────────────────────────
 
 app.post('/rooms/:code/photos', requireAuth, (req, res, next) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  const member = roomQueries.getMember.get(code, req.username);
-  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
-  dailyUpload.single('photo')(req, res, (err) => {
-    if (err) {
-      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'Image must be under 10 MB' });
+  (async () => {
+    const member = await roomQueries.getMember(code, req.username);
+    if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+    dailyUpload.single('photo')(req, res, async (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'Image must be under 10 MB' });
+        }
+        return res.status(400).json({ error: err.message || 'Upload failed' });
       }
-      return res.status(400).json({ error: err.message || 'Upload failed' });
-    }
-    if (!req.file) return res.status(400).json({ error: 'No file provided' });
-    const photoUrl = `/uploads/daily/${req.file.filename}`;
-    const now = Date.now();
-    const dayDate = new Date().toISOString().slice(0, 10);
-    const encrypted = req.body.encrypted ? 1 : 0;
-    const encIv = req.body.encIv || null;
-    dailyPhotoQueries.insertEncrypted.run(code, req.username, photoUrl, now, dayDate, encrypted, encIv);
-    res.json({ ok: true, photo_url: photoUrl, taken_at: now, encrypted, encIv });
-  });
+      if (!req.file) return res.status(400).json({ error: 'No file provided' });
+      const photoUrl = `/uploads/daily/${req.file.filename}`;
+      const now = Date.now();
+      const dayDate = new Date().toISOString().slice(0, 10);
+      const encrypted = req.body.encrypted ? 1 : 0;
+      const encIv = req.body.encIv || null;
+      await dailyPhotoQueries.insertEncrypted(code, req.username, photoUrl, now, dayDate, encrypted, encIv);
+      res.json({ ok: true, photo_url: photoUrl, taken_at: now, encrypted, encIv });
+    });
+  })();
 });
 
-app.get('/rooms/:code/photos', requireAuth, (req, res) => {
+app.get('/rooms/:code/photos', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  const member = roomQueries.getMember.get(code, req.username);
+  const member = await roomQueries.getMember(code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
   const date = req.query.date || new Date().toISOString().slice(0, 10);
-  const photos = dailyPhotoQueries.getForRoomAndDay.all(code, date);
+  const photos = await dailyPhotoQueries.getForRoomAndDay(code, date);
   res.json({ photos });
 });
 
-app.get('/moments', requireAuth, (req, res) => {
+app.get('/moments', requireAuth, async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  const photos = dailyPhotoQueries.getForUserToday.all(req.username, today);
+  const photos = await dailyPhotoQueries.getForUserToday(req.username, today);
   // Group by room_code
   const rooms = {};
   for (const p of photos) {
@@ -695,7 +698,7 @@ app.get('/moments', requireAuth, (req, res) => {
   // Fetch room names
   const result = [];
   for (const code of Object.keys(rooms)) {
-    const room = roomQueries.findByCode.get(code);
+    const room = await roomQueries.findByCode(code);
     if (room) {
       result.push({
         room_code: code,
@@ -710,46 +713,46 @@ app.get('/moments', requireAuth, (req, res) => {
 
 // ─── MESSAGE REACTIONS ─────────────────────────────────────────────────────────
 
-app.post('/messages/:id/reaction', requireAuth, (req, res) => {
+app.post('/messages/:id/reaction', requireAuth, async (req, res) => {
   const msgId = parseInt(req.params.id, 10);
   if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
   const { emoji } = req.body || {};
   if (!emoji || typeof emoji !== 'string' || emoji.length > 10) return res.status(400).json({ error: 'Invalid emoji' });
-  const msg = messageQueries.findById.get(msgId);
+  const msg = await messageQueries.findById(msgId);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
-  const member = roomQueries.getMember.get(msg.room_code, req.username);
+  const member = await roomQueries.getMember(msg.room_code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member of this room' });
   // Toggle: if reaction exists, remove it; otherwise add it
-  const existing = messageQueries.getReactions.all(msgId).filter(r => r.username === req.username && r.emoji === emoji);
+  const existing = (await messageQueries.getReactions(msgId)).filter(r => r.username === req.username && r.emoji === emoji);
   if (existing.length) {
-    messageQueries.removeReaction.run(msgId, req.username, emoji);
+    await messageQueries.removeReaction(msgId, req.username, emoji);
     res.json({ ok: true, action: 'removed', emoji });
   } else {
-    messageQueries.toggleReaction.run(msgId, msg.room_code, req.username, emoji);
+    await messageQueries.toggleReaction(msgId, msg.room_code, req.username, emoji);
     res.json({ ok: true, action: 'added', emoji });
   }
 });
 
-app.get('/messages/:id/reactions', requireAuth, (req, res) => {
+app.get('/messages/:id/reactions', requireAuth, async (req, res) => {
   const msgId = parseInt(req.params.id, 10);
   if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
-  const reactions = messageQueries.getReactions.all(msgId);
+  const reactions = await messageQueries.getReactions(msgId);
   res.json({ reactions });
 });
 
 // ─── MESSAGE EDIT / DELETE ─────────────────────────────────────────────────────
 
-app.put('/messages/:id', requireAuth, (req, res) => {
+app.put('/messages/:id', requireAuth, async (req, res) => {
   const msgId = parseInt(req.params.id, 10);
   if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
   const { text } = req.body || {};
   if (!text || typeof text !== 'string' || !text.trim() || text.length > MAX_MESSAGE_LEN) {
     return res.status(400).json({ error: 'Text required' });
   }
-  const msg = messageQueries.findById.get(msgId);
+  const msg = await messageQueries.findById(msgId);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.sender.toLowerCase() !== req.username.toLowerCase()) return res.status(403).json({ error: 'Not your message' });
-  messageQueries.updateText.run(text.trim(), msgId);
+  await messageQueries.updateText(text.trim(), msgId);
   // Broadcast edit via WS
   const clients = roomClients.get(msg.room_code);
   if (clients) {
@@ -759,13 +762,13 @@ app.put('/messages/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/messages/:id', requireAuth, (req, res) => {
+app.delete('/messages/:id', requireAuth, async (req, res) => {
   const msgId = parseInt(req.params.id, 10);
   if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
-  const msg = messageQueries.findById.get(msgId);
+  const msg = await messageQueries.findById(msgId);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.sender.toLowerCase() !== req.username.toLowerCase()) return res.status(403).json({ error: 'Not your message' });
-  messageQueries.markDeleted.run(msgId);
+  await messageQueries.markDeleted(msgId);
   // Broadcast delete via WS
   const clients = roomClients.get(msg.room_code);
   if (clients) {
@@ -777,9 +780,9 @@ app.delete('/messages/:id', requireAuth, (req, res) => {
 
 // ─── UNREAD TRACKING ───────────────────────────────────────────────────────────
 
-app.post('/rooms/:code/read', requireAuth, (req, res) => {
+app.post('/rooms/:code/read', requireAuth, async (req, res) => {
   const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
-  messageQueries.markRead.run(Date.now(), code, req.username);
+  await messageQueries.markRead(Date.now(), code, req.username);
   res.json({ ok: true });
 });
 
@@ -799,8 +802,16 @@ app.use((err, req, res, next) => {
 
 // ─── START ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`\n✅ ChatApp backend running on http://localhost:${PORT}`);
-  console.log(`🔌 WebSocket ready on ws://localhost:${PORT}`);
-  console.log(`📁 Database: ${require('path').join(__dirname, 'chatapp.db')}\n`);
-});
+
+initSchema()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`\n✅ ChatApp backend running on http://localhost:${PORT}`);
+      console.log(`🔌 WebSocket ready on ws://localhost:${PORT}`);
+      console.log(`🐘 Database: PostgreSQL\n`);
+    });
+  })
+  .catch(err => {
+    console.error('FATAL: Failed to initialize database schema:', err);
+    process.exit(1);
+  });
