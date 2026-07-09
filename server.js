@@ -248,15 +248,18 @@ wss.on('connection', (ws, req) => {
       if (!member) return;
 
       const sentAt = Date.now();
-      messageQueries.insert.run(code, wsUsername, text, sentAt);
+      const result = messageQueries.insert.run(code, wsUsername, text, sentAt);
+      const msgId = Number(result.lastInsertRowid);
 
       const packet = {
         type: 'message',
         roomCode: code,
+        msgId,
         id: sentAt + '-' + Math.random().toString(36).slice(2, 6),
         sender: wsUsername,
         text,
         sent_at: sentAt,
+        edited: 0,
       };
 
       const clients = roomClients.get(code);
@@ -264,6 +267,20 @@ wss.on('connection', (ws, req) => {
         const payload = JSON.stringify(packet);
         clients.forEach(({ ws: cws }) => {
           if (cws.readyState === 1) cws.send(payload);
+        });
+      }
+      return;
+    }
+
+    // { type: 'typing', roomCode }
+    if (msg.type === 'typing') {
+      const code = typeof msg.roomCode === 'string' ? msg.roomCode.slice(0, MAX_ROOM_CODE_LEN) : '';
+      if (!code) return;
+      const clients = roomClients.get(code);
+      if (clients) {
+        const packet = JSON.stringify({ type: 'typing', roomCode: code, username: wsUsername });
+        clients.forEach(({ ws: cws, username }) => {
+          if (cws.readyState === 1 && username !== wsUsername) cws.send(packet);
         });
       }
       return;
@@ -443,6 +460,11 @@ app.post('/friends/decline', requireAuth, (req, res) => {
 
 app.get('/rooms', requireAuth, (req, res) => {
   const rooms = roomQueries.getUserRooms.all(req.username);
+  // Attach unread counts
+  for (const room of rooms) {
+    const unread = messageQueries.getUnreadCount.get(req.username, room.code);
+    room.unread = unread ? unread.count : 0;
+  }
   res.json({ rooms });
 });
 
@@ -497,7 +519,14 @@ app.get('/rooms/:code/messages', requireAuth, (req, res) => {
   const member = roomQueries.getMember.get(code, req.username);
   if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
   const messages = messageQueries.getForUser.all(req.username, code);
-  res.json({ messages });
+  const reactions = messageQueries.getReactionsForMessages.all(code);
+  // Group reactions by message_id
+  const reactionsByMsg = {};
+  for (const r of reactions) {
+    if (!reactionsByMsg[r.message_id]) reactionsByMsg[r.message_id] = [];
+    reactionsByMsg[r.message_id].push({ username: r.username, emoji: r.emoji });
+  }
+  res.json({ messages, reactionsByMsg });
 });
 
 app.get('/rooms/:code', requireAuth, (req, res) => {
@@ -585,6 +614,81 @@ app.get('/moments', requireAuth, (req, res) => {
     }
   }
   res.json({ rooms: result });
+});
+
+// ─── MESSAGE REACTIONS ─────────────────────────────────────────────────────────
+
+app.post('/messages/:id/reaction', requireAuth, (req, res) => {
+  const msgId = parseInt(req.params.id, 10);
+  if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
+  const { emoji } = req.body || {};
+  if (!emoji || typeof emoji !== 'string' || emoji.length > 10) return res.status(400).json({ error: 'Invalid emoji' });
+  const msg = messageQueries.findById.get(msgId);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  const member = roomQueries.getMember.get(msg.room_code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room' });
+  // Toggle: if reaction exists, remove it; otherwise add it
+  const existing = messageQueries.getReactions.all(msgId).filter(r => r.username === req.username && r.emoji === emoji);
+  if (existing.length) {
+    messageQueries.removeReaction.run(msgId, req.username, emoji);
+    res.json({ ok: true, action: 'removed', emoji });
+  } else {
+    messageQueries.toggleReaction.run(msgId, msg.room_code, req.username, emoji);
+    res.json({ ok: true, action: 'added', emoji });
+  }
+});
+
+app.get('/messages/:id/reactions', requireAuth, (req, res) => {
+  const msgId = parseInt(req.params.id, 10);
+  if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
+  const reactions = messageQueries.getReactions.all(msgId);
+  res.json({ reactions });
+});
+
+// ─── MESSAGE EDIT / DELETE ─────────────────────────────────────────────────────
+
+app.put('/messages/:id', requireAuth, (req, res) => {
+  const msgId = parseInt(req.params.id, 10);
+  if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
+  const { text } = req.body || {};
+  if (!text || typeof text !== 'string' || !text.trim() || text.length > MAX_MESSAGE_LEN) {
+    return res.status(400).json({ error: 'Text required' });
+  }
+  const msg = messageQueries.findById.get(msgId);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.sender.toLowerCase() !== req.username.toLowerCase()) return res.status(403).json({ error: 'Not your message' });
+  messageQueries.updateText.run(text.trim(), msgId);
+  // Broadcast edit via WS
+  const clients = roomClients.get(msg.room_code);
+  if (clients) {
+    const packet = JSON.stringify({ type: 'edit', msgId, text: text.trim(), roomCode: msg.room_code });
+    clients.forEach(({ ws: cws }) => { if (cws.readyState === 1) cws.send(packet); });
+  }
+  res.json({ ok: true });
+});
+
+app.delete('/messages/:id', requireAuth, (req, res) => {
+  const msgId = parseInt(req.params.id, 10);
+  if (!msgId) return res.status(400).json({ error: 'Invalid message id' });
+  const msg = messageQueries.findById.get(msgId);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.sender.toLowerCase() !== req.username.toLowerCase()) return res.status(403).json({ error: 'Not your message' });
+  messageQueries.markDeleted.run(msgId);
+  // Broadcast delete via WS
+  const clients = roomClients.get(msg.room_code);
+  if (clients) {
+    const packet = JSON.stringify({ type: 'delete', msgId, roomCode: msg.room_code });
+    clients.forEach(({ ws: cws }) => { if (cws.readyState === 1) cws.send(packet); });
+  }
+  res.json({ ok: true });
+});
+
+// ─── UNREAD TRACKING ───────────────────────────────────────────────────────────
+
+app.post('/rooms/:code/read', requireAuth, (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  messageQueries.markRead.run(Date.now(), code, req.username);
+  res.json({ ok: true });
 });
 
 // ─── HEALTH ───────────────────────────────────────────────────────────────────

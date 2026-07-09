@@ -53,6 +53,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_code, sent_at);
   CREATE INDEX IF NOT EXISTS idx_friends_users ON friends(from_user, to_user);
 
+  CREATE TABLE IF NOT EXISTS message_reactions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    room_code  TEXT    NOT NULL,
+    username   TEXT    NOT NULL COLLATE NOCASE,
+    emoji      TEXT    NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    UNIQUE(message_id, username, emoji)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
+
   CREATE TABLE IF NOT EXISTS daily_photos (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     room_code  TEXT    NOT NULL,
@@ -77,6 +89,24 @@ if (!hasGoogleId) {
 const hasAvatarUrl = userCols.some(c => c.name === 'avatar_url');
 if (!hasAvatarUrl) {
   db.exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`);
+}
+
+// ─── MIGRATION: add last_read_at column for unread tracking ─────────────────
+const memberCols = db.prepare("PRAGMA table_info(room_members)").all();
+const hasLastRead = memberCols.some(c => c.name === 'last_read_at');
+if (!hasLastRead) {
+  db.exec(`ALTER TABLE room_members ADD COLUMN last_read_at INTEGER NOT NULL DEFAULT 0`);
+}
+
+// ─── MIGRATION: add edited column for message editing ────────────────────
+const msgCols = db.prepare("PRAGMA table_info(messages)").all();
+const hasEdited = msgCols.some(c => c.name === 'edited');
+if (!hasEdited) {
+  db.exec(`ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0`);
+}
+const hasDeleted = msgCols.some(c => c.name === 'deleted');
+if (!hasDeleted) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`);
 }
 
 // ─── MIGRATION: add color column for per-room custom colors ─────────────────
@@ -170,15 +200,37 @@ const dailyPhotoQueries = {
 
 const messageQueries = {
   insert: db.prepare('INSERT INTO messages (room_code, sender, text, sent_at) VALUES (?, ?, ?, ?)'),
-  // Only get messages after the user's join time
+  findById: db.prepare('SELECT * FROM messages WHERE id = ?'),
+  updateText: db.prepare('UPDATE messages SET text = ?, edited = 1 WHERE id = ? AND deleted = 0'),
+  markDeleted: db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?'),
+  // Only get messages after the user's join time, excluding deleted
   getForUser: db.prepare(`
-    SELECT m.id, m.sender, m.text, m.sent_at
+    SELECT m.id, m.sender, m.text, m.sent_at, m.edited, m.deleted
     FROM messages m
     JOIN room_members rm ON rm.room_code = m.room_code
       AND rm.username = ? COLLATE NOCASE
       AND m.sent_at >= rm.joined_at
-    WHERE m.room_code = ?
+    WHERE m.room_code = ? AND m.deleted = 0
     ORDER BY m.sent_at ASC
+  `),
+  toggleReaction: db.prepare(`
+    INSERT OR IGNORE INTO message_reactions (message_id, room_code, username, emoji) VALUES (?, ?, ?, ?)
+  `),
+  removeReaction: db.prepare(`
+    DELETE FROM message_reactions WHERE message_id = ? AND username = ? AND emoji = ?
+  `),
+  getReactions: db.prepare('SELECT username, emoji FROM message_reactions WHERE message_id = ? ORDER BY created_at ASC'),
+  getReactionsForMessages: db.prepare(`
+    SELECT message_id, username, emoji FROM message_reactions
+    WHERE message_id IN (SELECT id FROM messages WHERE room_code = ?)
+    ORDER BY created_at ASC
+  `),
+  markRead: db.prepare('UPDATE room_members SET last_read_at = ? WHERE room_code = ? AND username = ?'),
+  getUnreadCount: db.prepare(`
+    SELECT COUNT(*) AS count FROM messages m
+    JOIN room_members rm ON rm.room_code = m.room_code
+      AND rm.username = ? AND m.sent_at > rm.last_read_at
+    WHERE m.room_code = ? AND m.deleted = 0
   `),
 };
 
