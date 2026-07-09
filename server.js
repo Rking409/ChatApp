@@ -18,6 +18,7 @@ const {
   messageQueries,
   dailyPhotoQueries,
   keyQueries,
+  adminUserQueries,
   adminQueries,
   generateRoomCode,
   initSchema,
@@ -45,11 +46,6 @@ if (!GOOGLE_CLIENT_ID) {
 }
 if (ALLOWED_ORIGINS.length === 0) {
   console.warn('WARNING: ALLOWED_ORIGINS is not set — CORS will block all browser origins by default.');
-}
-
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
-if (!ADMIN_USERNAME) {
-  console.warn('WARNING: ADMIN_USERNAME is not set — admin endpoints will be disabled.');
 }
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -160,11 +156,22 @@ async function requireAuth(req, res, next) {
   }
 }
 
-function requireAdmin(req, res, next) {
-  if (!ADMIN_USERNAME || req.username.toLowerCase() !== ADMIN_USERNAME.toLowerCase()) {
-    return res.status(403).json({ error: 'Admin access required' });
+async function requireAdminAuth(req, res, next) {
+  const auth = req.headers['authorization'];
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Not authenticated' });
   }
-  next();
+  try {
+    const token = auth.slice(7);
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (payload.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    const admin = await adminUserQueries.findByUsername(payload.username);
+    if (!admin) return res.status(403).json({ error: 'Admin account no longer exists' });
+    req.adminUsername = admin.username;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid or expired admin session' });
+  }
 }
 
 function signToken(username) {
@@ -612,9 +619,63 @@ app.get('/rooms/:code/keys', requireAuth, async (req, res) => {
   res.json({ keys });
 });
 
-// ─── ADMIN ───────────────────────────────────────────────────────────────────────
+// ─── ADMIN AUTH ───────────────────────────────────────────────────────────────────
 
-app.get('/admin/stats', requireAuth, requireAdmin, async (req, res) => {
+app.get('/admin/check', async (req, res) => {
+  const count = await adminUserQueries.count();
+  res.json({ hasAdmin: count > 0 });
+});
+
+app.post('/admin/setup', authLimiter, async (req, res) => {
+  const count = await adminUserQueries.count();
+  if (count > 0) return res.status(400).json({ error: 'Admin already exists' });
+  const { username, password } = req.body || {};
+  if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+  if (!/^[a-zA-Z0-9_]{2,20}$/.test(username)) {
+    return res.status(400).json({ error: 'Username: 2-20 chars, letters/numbers/underscore only' });
+  }
+  if (password.length < 4 || password.length > 200) {
+    return res.status(400).json({ error: 'Password must be 4-200 characters' });
+  }
+  const hash = bcrypt.hashSync(password, 10);
+  await adminUserQueries.create(username, hash);
+  const token = jwt.sign({ username, role: 'admin' }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ ok: true, username, token });
+});
+
+app.post('/admin/login', authLimiter, async (req, res) => {
+  const { username, password } = req.body || {};
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+  const admin = await adminUserQueries.findByUsername(username);
+  if (!admin || !bcrypt.compareSync(password, admin.password)) {
+    return res.status(401).json({ error: 'Wrong admin credentials' });
+  }
+  const token = jwt.sign({ username: admin.username, role: 'admin' }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ ok: true, username: admin.username, token });
+});
+
+app.put('/admin/password', requireAdminAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword required' });
+  if (newPassword.length < 4 || newPassword.length > 200) {
+    return res.status(400).json({ error: 'Password must be 4-200 characters' });
+  }
+  const admin = await adminUserQueries.findByUsername(req.adminUsername);
+  if (!admin || !bcrypt.compareSync(currentPassword, admin.password)) {
+    return res.status(401).json({ error: 'Current password is wrong' });
+  }
+  const hash = bcrypt.hashSync(newPassword, 10);
+  await adminUserQueries.updatePassword(req.adminUsername, hash);
+  res.json({ ok: true });
+});
+
+// ─── ADMIN DATA ───────────────────────────────────────────────────────────────────
+
+app.get('/admin/stats', requireAdminAuth, async (req, res) => {
   res.json({
     users: (await adminQueries.countUsers()).count,
     rooms: (await adminQueries.countRooms()).count,
@@ -623,11 +684,11 @@ app.get('/admin/stats', requireAuth, requireAdmin, async (req, res) => {
   });
 });
 
-app.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+app.get('/admin/users', requireAdminAuth, async (req, res) => {
   res.json({ users: await adminQueries.getAllUsers() });
 });
 
-app.get('/admin/rooms', requireAuth, requireAdmin, async (req, res) => {
+app.get('/admin/rooms', requireAdminAuth, async (req, res) => {
   const rooms = await adminQueries.getAllRooms();
   const members = await adminQueries.getAllMembers();
   const membersByRoom = {};
@@ -639,15 +700,15 @@ app.get('/admin/rooms', requireAuth, requireAdmin, async (req, res) => {
   res.json({ rooms });
 });
 
-app.get('/admin/messages', requireAuth, requireAdmin, async (req, res) => {
+app.get('/admin/messages', requireAdminAuth, async (req, res) => {
   res.json({ messages: await adminQueries.getAllMessages() });
 });
 
-app.get('/admin/friends', requireAuth, requireAdmin, async (req, res) => {
+app.get('/admin/friends', requireAdminAuth, async (req, res) => {
   res.json({ friends: await adminQueries.getAllFriends() });
 });
 
-app.get('/admin/photos', requireAuth, requireAdmin, async (req, res) => {
+app.get('/admin/photos', requireAdminAuth, async (req, res) => {
   res.json({ photos: await adminQueries.getAllPhotos() });
 });
 

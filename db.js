@@ -136,6 +136,15 @@ async function initSchema() {
     )
   `);
 
+  await run(`
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id         SERIAL PRIMARY KEY,
+      username   TEXT NOT NULL UNIQUE,
+      password   TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
+    )
+  `);
+
   // ─── MIGRATIONS ──────────────────────────────────────────────────────────────
 
   // Migrate: add columns that may not exist (added after initial schema)
@@ -414,6 +423,24 @@ const keyQueries = {
   },
 };
 
+// ─── ADMIN USER QUERIES ────────────────────────────────────────────────────────
+
+const adminUserQueries = {
+  async create(username, password) {
+    await run(`INSERT INTO admin_users (username, password) VALUES ($1, $2)`, [username, password]);
+  },
+  async findByUsername(username) {
+    return get(`SELECT * FROM admin_users WHERE LOWER(username) = LOWER($1)`, [username]);
+  },
+  async count() {
+    const row = await get(`SELECT COUNT(*)::int AS count FROM admin_users`);
+    return row ? row.count : 0;
+  },
+  async updatePassword(username, newHash) {
+    await run(`UPDATE admin_users SET password = $1 WHERE LOWER(username) = LOWER($2)`, [newHash, username]);
+  },
+};
+
 // ─── ADMIN QUERIES ─────────────────────────────────────────────────────────────
 
 const adminQueries = {
@@ -474,6 +501,7 @@ module.exports = {
   messageQueries,
   dailyPhotoQueries,
   keyQueries,
+  adminUserQueries,
   adminQueries,
   generateRoomCode,
 };
