@@ -121,6 +121,9 @@ app.use(cors({
 
 app.use('/uploads', express.static(UPLOAD_DIR));
 app.get('/admin', (req, res) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+  );
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 app.use(express.json({ limit: '100kb' })); // cap body size — cheap DoS protection
