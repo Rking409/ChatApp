@@ -16,6 +16,8 @@ const {
   roomQueries,
   messageQueries,
   dailyPhotoQueries,
+  keyQueries,
+  adminQueries,
   generateRoomCode,
 } = require('./db');
 
@@ -41,6 +43,11 @@ if (!GOOGLE_CLIENT_ID) {
 }
 if (ALLOWED_ORIGINS.length === 0) {
   console.warn('WARNING: ALLOWED_ORIGINS is not set — CORS will block all browser origins by default.');
+}
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
+if (!ADMIN_USERNAME) {
+  console.warn('WARNING: ADMIN_USERNAME is not set — admin endpoints will be disabled.');
 }
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -151,6 +158,13 @@ function requireAuth(req, res, next) {
   }
 }
 
+function requireAdmin(req, res, next) {
+  if (!ADMIN_USERNAME || req.username.toLowerCase() !== ADMIN_USERNAME.toLowerCase()) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
 function signToken(username) {
   return jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' });
 }
@@ -248,7 +262,9 @@ wss.on('connection', (ws, req) => {
       if (!member) return;
 
       const sentAt = Date.now();
-      const result = messageQueries.insert.run(code, wsUsername, text, sentAt);
+      const encrypted = msg.encrypted ? 1 : 0;
+      const encIv = msg.encIv || null;
+      const result = messageQueries.insertEncrypted.run(code, wsUsername, text, sentAt, encrypted, encIv);
       const msgId = Number(result.lastInsertRowid);
 
       const packet = {
@@ -260,6 +276,8 @@ wss.on('connection', (ws, req) => {
         text,
         sent_at: sentAt,
         edited: 0,
+        encrypted,
+        encIv,
       };
 
       const clients = roomClients.get(code);
@@ -560,6 +578,78 @@ app.post('/users/avatar', requireAuth, (req, res, next) => {
   });
 });
 
+// ─── E2E ENCRYPTION KEYS ───────────────────────────────────────────────────────
+
+app.post('/users/key', requireAuth, (req, res) => {
+  const { public_key } = req.body || {};
+  if (!public_key || typeof public_key !== 'string') return res.status(400).json({ error: 'public_key required' });
+  keyQueries.setPublicKey.run(req.username, public_key, Date.now());
+  res.json({ ok: true });
+});
+
+app.get('/users/:username/key', requireAuth, (req, res) => {
+  const key = keyQueries.getPublicKey.get(req.params.username);
+  if (!key) return res.status(404).json({ error: 'No key found' });
+  res.json({ public_key: key.public_key });
+});
+
+app.post('/rooms/:code/keys', requireAuth, (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const member = roomQueries.getMember.get(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member' });
+  const { encrypted_key } = req.body || {};
+  if (!encrypted_key || typeof encrypted_key !== 'string') return res.status(400).json({ error: 'encrypted_key required' });
+  keyQueries.storeRoomKey.run(code, req.username, encrypted_key);
+  res.json({ ok: true });
+});
+
+app.get('/rooms/:code/keys', requireAuth, (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const member = roomQueries.getMember.get(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member' });
+  const keys = keyQueries.getRoomKeys.all(code);
+  res.json({ keys });
+});
+
+// ─── ADMIN ───────────────────────────────────────────────────────────────────────
+
+app.get('/admin/stats', requireAuth, requireAdmin, (req, res) => {
+  res.json({
+    users: adminQueries.countUsers.get().count,
+    rooms: adminQueries.countRooms.get().count,
+    messages: adminQueries.countMessages.get().count,
+    photos: adminQueries.countPhotos.get().count,
+  });
+});
+
+app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
+  res.json({ users: adminQueries.getAllUsers.all() });
+});
+
+app.get('/admin/rooms', requireAuth, requireAdmin, (req, res) => {
+  const rooms = adminQueries.getAllRooms.all();
+  const members = adminQueries.getAllMembers.all();
+  const membersByRoom = {};
+  for (const m of members) {
+    if (!membersByRoom[m.room_code]) membersByRoom[m.room_code] = [];
+    membersByRoom[m.room_code].push(m.username);
+  }
+  for (const r of rooms) r.members = membersByRoom[r.code] || [];
+  res.json({ rooms });
+});
+
+app.get('/admin/messages', requireAuth, requireAdmin, (req, res) => {
+  res.json({ messages: adminQueries.getAllMessages.all() });
+});
+
+app.get('/admin/friends', requireAuth, requireAdmin, (req, res) => {
+  res.json({ friends: adminQueries.getAllFriends.all() });
+});
+
+app.get('/admin/photos', requireAuth, requireAdmin, (req, res) => {
+  res.json({ photos: adminQueries.getAllPhotos.all() });
+});
+
 // ─── DAILY MOMENTS ─────────────────────────────────────────────────────────────
 
 app.post('/rooms/:code/photos', requireAuth, (req, res, next) => {
@@ -577,8 +667,10 @@ app.post('/rooms/:code/photos', requireAuth, (req, res, next) => {
     const photoUrl = `/uploads/daily/${req.file.filename}`;
     const now = Date.now();
     const dayDate = new Date().toISOString().slice(0, 10);
-    dailyPhotoQueries.insert.run(code, req.username, photoUrl, now, dayDate);
-    res.json({ ok: true, photo_url: photoUrl, taken_at: now });
+    const encrypted = req.body.encrypted ? 1 : 0;
+    const encIv = req.body.encIv || null;
+    dailyPhotoQueries.insertEncrypted.run(code, req.username, photoUrl, now, dayDate, encrypted, encIv);
+    res.json({ ok: true, photo_url: photoUrl, taken_at: now, encrypted, encIv });
   });
 });
 

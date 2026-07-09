@@ -75,6 +75,21 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_daily_photos_room_day ON daily_photos(room_code, day_date);
+
+  CREATE TABLE IF NOT EXISTS user_keys (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    public_key TEXT    NOT NULL,
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+  );
+
+  CREATE TABLE IF NOT EXISTS room_keys (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_code      TEXT NOT NULL,
+    username       TEXT NOT NULL COLLATE NOCASE,
+    encrypted_key  TEXT NOT NULL,
+    UNIQUE(room_code, username)
+  );
 `);
 
 // ─── MIGRATION: add google_id column for Google sign-in users ───────────────
@@ -107,6 +122,19 @@ if (!hasEdited) {
 const hasDeleted = msgCols.some(c => c.name === 'deleted');
 if (!hasDeleted) {
   db.exec(`ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`);
+}
+const hasEncrypted = msgCols.some(c => c.name === 'encrypted');
+if (!hasEncrypted) {
+  db.exec(`ALTER TABLE messages ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`);
+  db.exec(`ALTER TABLE messages ADD COLUMN enc_iv TEXT`);
+}
+
+// ─── MIGRATION: add encrypted column for daily photos ─────────────────────
+const photoCols = db.prepare("PRAGMA table_info(daily_photos)").all();
+const hasPhotoEnc = photoCols.some(c => c.name === 'encrypted');
+if (!hasPhotoEnc) {
+  db.exec(`ALTER TABLE daily_photos ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`);
+  db.exec(`ALTER TABLE daily_photos ADD COLUMN enc_iv TEXT`);
 }
 
 // ─── MIGRATION: add color column for per-room custom colors ─────────────────
@@ -187,6 +215,7 @@ const roomQueries = {
 
 const dailyPhotoQueries = {
   insert: db.prepare('INSERT INTO daily_photos (room_code, username, photo_url, taken_at, day_date) VALUES (?, ?, ?, ?, ?)'),
+  insertEncrypted: db.prepare('INSERT INTO daily_photos (room_code, username, photo_url, taken_at, day_date, encrypted, enc_iv) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   getForRoomAndDay: db.prepare('SELECT * FROM daily_photos WHERE room_code = ? AND day_date = ? ORDER BY taken_at ASC'),
   getForUserToday: db.prepare(`
     SELECT dp.* FROM daily_photos dp
@@ -200,12 +229,13 @@ const dailyPhotoQueries = {
 
 const messageQueries = {
   insert: db.prepare('INSERT INTO messages (room_code, sender, text, sent_at) VALUES (?, ?, ?, ?)'),
+  insertEncrypted: db.prepare('INSERT INTO messages (room_code, sender, text, sent_at, encrypted, enc_iv) VALUES (?, ?, ?, ?, ?, ?)'),
   findById: db.prepare('SELECT * FROM messages WHERE id = ?'),
   updateText: db.prepare('UPDATE messages SET text = ?, edited = 1 WHERE id = ? AND deleted = 0'),
   markDeleted: db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?'),
   // Only get messages after the user's join time, excluding deleted
   getForUser: db.prepare(`
-    SELECT m.id, m.sender, m.text, m.sent_at, m.edited, m.deleted
+    SELECT m.id, m.sender, m.text, m.sent_at, m.edited, m.deleted, m.encrypted, m.enc_iv
     FROM messages m
     JOIN room_members rm ON rm.room_code = m.room_code
       AND rm.username = ? COLLATE NOCASE
@@ -234,6 +264,35 @@ const messageQueries = {
   `),
 };
 
+// ─── KEY QUERIES ───────────────────────────────────────────────────────────────
+
+const keyQueries = {
+  setPublicKey: db.prepare('INSERT OR REPLACE INTO user_keys (username, public_key, updated_at) VALUES (?, ?, ?)'),
+  getPublicKey: db.prepare('SELECT public_key FROM user_keys WHERE username = ?'),
+  storeRoomKey: db.prepare('INSERT OR REPLACE INTO room_keys (room_code, username, encrypted_key) VALUES (?, ?, ?)'),
+  getRoomKey: db.prepare('SELECT encrypted_key FROM room_keys WHERE room_code = ? AND username = ?'),
+  getRoomKeys: db.prepare('SELECT username, encrypted_key FROM room_keys WHERE room_code = ?'),
+  deleteRoomKeys: db.prepare('DELETE FROM room_keys WHERE room_code = ?'),
+};
+
+// ─── ADMIN QUERIES (no user filtering) ─────────────────────────────────────────
+
+const adminQueries = {
+  getAllUsers: db.prepare('SELECT id, username, google_id, avatar_url, created_at FROM users ORDER BY created_at DESC'),
+  getAllRooms: db.prepare('SELECT * FROM rooms ORDER BY created_at DESC'),
+  getAllMembers: db.prepare('SELECT * FROM room_members ORDER BY room_code, username'),
+  getAllFriends: db.prepare('SELECT * FROM friends ORDER BY created_at DESC'),
+  getAllMessages: db.prepare(`
+    SELECT m.id, m.room_code, m.sender, m.text, m.sent_at, m.edited, m.deleted, m.encrypted, m.enc_iv
+    FROM messages m ORDER BY m.sent_at DESC LIMIT 2000
+  `),
+  getAllPhotos: db.prepare('SELECT * FROM daily_photos ORDER BY taken_at DESC LIMIT 500'),
+  countUsers: db.prepare('SELECT COUNT(*) AS count FROM users'),
+  countRooms: db.prepare('SELECT COUNT(*) AS count FROM rooms'),
+  countMessages: db.prepare('SELECT COUNT(*) AS count FROM messages WHERE deleted = 0'),
+  countPhotos: db.prepare('SELECT COUNT(*) AS count FROM daily_photos'),
+};
+
 // ─── HELPER: generate unique room code ───────────────────────────────────────
 
 function generateRoomCode() {
@@ -252,5 +311,7 @@ module.exports = {
   roomQueries,
   messageQueries,
   dailyPhotoQueries,
+  keyQueries,
+  adminQueries,
   generateRoomCode,
 };
