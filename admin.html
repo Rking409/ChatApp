@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Admin</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 20px; }
+h1 { color: #fff; margin-bottom: 16px; }
+h2 { color: #bbb; margin: 24px 0 8px; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px; }
+#token-box { max-width: 400px; margin: 80px auto; background: #1a1a1a; padding: 32px; border-radius: 12px; text-align: center; }
+#token-box input { width: 100%; padding: 10px; margin-bottom: 12px; background: #2a2a2a; border: 1px solid #333; border-radius: 6px; color: #fff; font-size: 1rem; text-align: center; }
+#token-box button { width: 100%; padding: 10px; background: #3b82f6; border: none; border-radius: 6px; color: #fff; font-size: 1rem; cursor: pointer; }
+#token-box button:hover { background: #2563eb; }
+#token-box .error { color: #f87171; margin-top: 8px; font-size: 0.9rem; }
+#token-box .info { color: #9ca3af; margin-bottom: 16px; font-size: 0.85rem; }
+#admin-panel { display: none; }
+nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+nav button { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #ccc; cursor: pointer; }
+nav button:hover { background: #2a2a2a; }
+nav button.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.section { display: none; }
+.section.active { display: block; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: #1a1a1a; padding: 16px; border-radius: 8px; text-align: center; }
+.stat-card .num { font-size: 2rem; font-weight: 700; color: #3b82f6; }
+.stat-card .label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
+th { color: #888; font-weight: 600; position: sticky; top: 0; background: #0f0f0f; }
+tr:hover td { background: #1a1a1a; }
+.enc-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; }
+.enc-yes { background: #1e3a1e; color: #4ade80; }
+.enc-no { background: #3a1e1e; color: #f87171; }
+</style>
+</head>
+<body>
+
+<div id="token-box">
+  <h1 style="margin-bottom:24px">Admin Panel</h1>
+  <div class="info">Enter your admin token to access the panel.<br>It will be saved in your browser for next time.</div>
+  <input type="password" id="token-input" placeholder="Admin token" autocomplete="off">
+  <button onclick="login()">Access Admin</button>
+  <div class="error" id="token-error"></div>
+</div>
+
+<div id="admin-panel">
+  <h1>Chat Admin</h1>
+  <nav>
+    <button class="active" data-section="stats" onclick="switchTab('stats')">Stats</button>
+    <button data-section="users" onclick="switchTab('users')">Users</button>
+    <button data-section="rooms" onclick="switchTab('rooms')">Rooms</button>
+    <button data-section="messages" onclick="switchTab('messages')">Messages</button>
+    <button data-section="friends" onclick="switchTab('friends')">Friends</button>
+    <button data-section="photos" onclick="switchTab('photos')">Photos</button>
+    <button onclick="logout()" style="margin-left:auto;border-color:#444">Logout</button>
+  </nav>
+
+  <div id="section-stats" class="section active"></div>
+  <div id="section-users" class="section"></div>
+  <div id="section-rooms" class="section"></div>
+  <div id="section-messages" class="section"></div>
+  <div id="section-friends" class="section"></div>
+  <div id="section-photos" class="section"></div>
+</div>
+
+<script>
+const BASE = '';
+let ADMIN_TOKEN = localStorage.getItem('admin_token') || '';
+
+if (ADMIN_TOKEN) { document.getElementById('admin-panel').style.display = 'block'; document.getElementById('token-box').style.display = 'none'; loadAll(); }
+
+async function api(path, opts) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (ADMIN_TOKEN) headers['Authorization'] = 'Bearer ' + ADMIN_TOKEN;
+  const res = await fetch(BASE + path, { ...opts, headers });
+  let data;
+  try { data = await res.json(); } catch { data = {}; }
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+async function login() {
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) { document.getElementById('token-error').textContent = 'Enter your admin token'; return; }
+  document.getElementById('token-error').textContent = '';
+  // Verify by making a test request
+  ADMIN_TOKEN = token;
+  try {
+    await api('/admin/stats');
+    localStorage.setItem('admin_token', token);
+    document.getElementById('token-box').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'block';
+    loadAll();
+  } catch (e) {
+    ADMIN_TOKEN = '';
+    document.getElementById('token-error').textContent = e.message;
+  }
+}
+
+function logout() {
+  ADMIN_TOKEN = '';
+  localStorage.removeItem('admin_token');
+  document.getElementById('token-box').style.display = 'block';
+  document.getElementById('admin-panel').style.display = 'none';
+  document.getElementById('token-input').value = '';
+}
+
+function switchTab(name) {
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelector(`nav button[data-section="${name}"]`).classList.add('active');
+  document.getElementById('section-' + name).classList.add('active');
+}
+
+async function loadAll() {
+  try {
+    const [stats, users, rooms, messages, friends, photos] = await Promise.all([
+      api('/admin/stats'), api('/admin/users'), api('/admin/rooms'),
+      api('/admin/messages'), api('/admin/friends'), api('/admin/photos'),
+    ]);
+    renderStats(stats);
+    renderUsers(users.users);
+    renderRooms(rooms.rooms);
+    renderMessages(messages.messages);
+    renderFriends(friends.friends);
+    renderPhotos(photos.photos);
+  } catch (e) {
+    if (e.message.includes('Admin token') || e.message.includes('Not authenticated')) {
+      logout();
+    } else {
+      document.body.innerHTML = '<div style="color:#f87171;padding:40px">Error: ' + e.message + '</div>';
+    }
+  }
+}
+
+function renderStats(s) {
+  document.getElementById('section-stats').innerHTML = `<div class="stats-grid">
+    <div class="stat-card"><div class="num">${s.users}</div><div class="label">Users</div></div>
+    <div class="stat-card"><div class="num">${s.rooms}</div><div class="label">Rooms</div></div>
+    <div class="stat-card"><div class="num">${s.messages}</div><div class="label">Messages</div></div>
+    <div class="stat-card"><div class="num">${s.photos}</div><div class="label">Daily Photos</div></div>
+  </div>`;
+}
+
+function renderUsers(users) {
+  if (!users || !users.length) { document.getElementById('section-users').innerHTML = '<p>No users</p>'; return; }
+  let html = '<div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Username</th><th>Google ID</th><th>Avatar</th><th>Created</th></tr></thead><tbody>';
+  for (const u of users) {
+    html += `<tr><td>${u.id}</td><td>${esc(u.username)}</td><td>${u.google_id ? esc(u.google_id) : '&mdash;'}</td><td>${u.avatar_url ? '<a href="'+esc(u.avatar_url)+'" target="_blank">link</a>' : '&mdash;'}</td><td>${fmt(u.created_at)}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('section-users').innerHTML = html;
+}
+
+function renderRooms(rooms) {
+  if (!rooms || !rooms.length) { document.getElementById('section-rooms').innerHTML = '<p>No rooms</p>'; return; }
+  let html = '<div style="overflow-x:auto"><table><thead><tr><th>Code</th><th>Name</th><th>Created by</th><th>Members</th><th>Created</th></tr></thead><tbody>';
+  for (const r of rooms) {
+    html += `<tr><td>${esc(r.code)}</td><td>${esc(r.name || '')}</td><td>${esc(r.owner || '')}</td><td>${esc((r.members||[]).join(', '))}</td><td>${fmt(r.created_at)}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('section-rooms').innerHTML = html;
+}
+
+function renderMessages(msgs) {
+  if (!msgs || !msgs.length) { document.getElementById('section-messages').innerHTML = '<p>No messages</p>'; return; }
+  let html = '<div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Room</th><th>Sender</th><th>Content</th><th>Encrypted</th><th>Sent</th><th>Edited</th><th>Deleted</th></tr></thead><tbody>';
+  for (const m of msgs) {
+    const enc = m.encrypted ? '<span class="enc-badge enc-yes">YES</span>' : '<span class="enc-badge enc-no">NO</span>';
+    const content = m.encrypted ? '<span style="color:#666;font-style:italic">[encrypted]</span>' : esc(m.text || '');
+    html += `<tr><td>${m.id}</td><td>${esc(m.room_code)}</td><td>${esc(m.sender)}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${content}</td><td>${enc}</td><td>${fmt(m.sent_at)}</td><td>${m.edited ? '&#10003;' : ''}</td><td>${m.deleted ? '&#10003;' : ''}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('section-messages').innerHTML = html;
+}
+
+function renderFriends(friends) {
+  if (!friends || !friends.length) { document.getElementById('section-friends').innerHTML = '<p>No friends</p>'; return; }
+  let html = '<div style="overflow-x:auto"><table><thead><tr><th>User1</th><th>User2</th><th>Created</th></tr></thead><tbody>';
+  for (const f of friends) {
+    html += `<tr><td>${esc(f.from_user)}</td><td>${esc(f.to_user)}</td><td>${fmt(f.created_at)}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('section-friends').innerHTML = html;
+}
+
+function renderPhotos(photos) {
+  if (!photos || !photos.length) { document.getElementById('section-photos').innerHTML = '<p>No photos</p>'; return; }
+  let html = '<div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Room</th><th>Uploaded by</th><th>URL</th><th>Encrypted</th><th>Taken</th></tr></thead><tbody>';
+  for (const p of photos) {
+    const enc = p.encrypted ? '<span class="enc-badge enc-yes">YES</span>' : '<span class="enc-badge enc-no">NO</span>';
+    const url = p.encrypted ? '<span style="color:#666;font-style:italic">[encrypted]</span>' : (p.photo_url ? '<a href="'+BASE+esc(p.photo_url)+'" target="_blank">view</a>' : '&mdash;');
+    html += `<tr><td>${p.id}</td><td>${esc(p.room_code)}</td><td>${esc(p.username)}</td><td>${url}</td><td>${enc}</td><td>${fmt(p.taken_at)}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('section-photos').innerHTML = html;
+}
+
+function esc(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmt(ts) { return ts ? new Date(ts).toLocaleString() : ''; }
+</script>
+</body>
+</html>
