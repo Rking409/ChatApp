@@ -3,3 +3,5 @@ chatapp.db
 chatapp.db-shm
 chatapp.db-wal
 uploads/
+.idea/
+backend/

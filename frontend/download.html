@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChatApp — Download</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --ink: #0A0F1C;
+    --primary: #F5A947;
+    --primary-blue: #8CA2FF;
+    --glass-bg: rgba(255,255,255,0.05);
+    --glass-border: rgba(255,255,255,0.1);
+    --text: #EDEFF6;
+    --text-secondary: #8A93A8;
+    --success: #5FD98A;
+    --card-radius: 20px;
+    --pill-radius: 999px;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Manrope', -apple-system, sans-serif;
+    background:
+      radial-gradient(ellipse 1000px 700px at 15% -10%, rgba(140,162,255,0.10), transparent),
+      radial-gradient(ellipse 900px 700px at 100% 0%, rgba(245,169,71,0.08), transparent),
+      linear-gradient(135deg, #0A0F1C, #0d1220, #0A0F1C);
+    background-size: auto, auto, 400% 400%;
+    animation: bgShift 18s ease infinite;
+    color: var(--text);
+    min-height: 100vh;
+  }
+  @keyframes bgShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+
+  .hero { text-align: center; padding: 60px 0 40px; }
+  .hero-logo {
+    width: 80px; height: 80px; border-radius: 22px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 24px;
+    box-shadow: 0 8px 32px rgba(245,169,71,0.3);
+  }
+  .hero-logo svg { width: 40px; height: 40px; }
+  .hero-title {
+    font-family: 'Fraunces', serif; font-weight: 500;
+    font-size: 42px; letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .hero-title em { font-style: italic; color: var(--primary); }
+  .hero-sub {
+    font-size: 16px; color: var(--text-secondary);
+    max-width: 500px; margin: 0 auto 32px; line-height: 1.6;
+  }
+  .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 32px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    border: none; border-radius: var(--pill-radius);
+    color: var(--ink); font-size: 15px; font-weight: 700;
+    cursor: pointer; text-decoration: none;
+    box-shadow: 0 4px 20px rgba(245,169,71,0.25);
+    transition: transform 0.2s;
+  }
+  .btn-primary:hover { transform: translateY(-2px); }
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 32px;
+    background: var(--glass-bg); backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border); border-radius: var(--pill-radius);
+    color: var(--text); font-size: 15px; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    transition: transform 0.2s;
+  }
+  .btn-ghost:hover { transform: translateY(-2px); background: rgba(245,169,71,0.08); }
+
+  .section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 500; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.12em;
+    margin: 60px 0 24px; text-align: center;
+  }
+
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+  .feature-card {
+    background: var(--glass-bg); backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius); padding: 28px 24px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    transition: transform 0.2s;
+  }
+  .feature-card:hover { transform: translateY(-3px); }
+  .feature-icon {
+    width: 48px; height: 48px; border-radius: 14px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px; color: var(--ink);
+  }
+  .feature-icon svg { width: 24px; height: 24px; }
+  .feature-name { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .feature-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+  .steps { display: flex; flex-direction: column; gap: 20px; max-width: 600px; margin: 0 auto; }
+  .step {
+    display: flex; gap: 16px; align-items: flex-start;
+    background: var(--glass-bg); backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius); padding: 20px 24px;
+  }
+  .step-num {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; color: var(--ink); font-weight: 800; font-size: 15px;
+  }
+  .step-text { flex: 1; padding-top: 6px; }
+  .step-text strong { display: block; font-size: 15px; margin-bottom: 4px; }
+  .step-text span { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+  .qr-section { text-align: center; padding: 40px 0; }
+  .qr-section .qr-label { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
+  #dlQrCode { display: inline-block; padding: 16px; background: white; border-radius: 16px; }
+
+  .footer {
+    text-align: center; padding: 40px 0 20px;
+    font-size: 12px; color: var(--text-secondary);
+    border-top: 1px solid var(--glass-border);
+    margin-top: 40px;
+  }
+  .footer a { color: var(--primary); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 480px) {
+    .hero-title { font-size: 30px; }
+    .container { padding: 20px 16px; }
+    .hero { padding: 40px 0 20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0A0F1C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    </div>
+    <h1 class="hero-title">Chat<em>App</em></h1>
+    <p class="hero-sub">Encrypted real-time messaging for night owls. Chat, share moments, and stay connected with end-to-end encryption.</p>
+    <div class="hero-btns">
+      <a href="/" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Open ChatApp
+      </a>
+      <a href="#install" class="btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        How to Install
+      </a>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="section-title">Features</div>
+  <div class="features">
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div class="feature-name">End-to-End Encrypted</div>
+      <div class="feature-desc">Messages and photos are encrypted in transit and at rest. Only you and the recipient hold the keys.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <div class="feature-name">Real-time Chat</div>
+      <div class="feature-desc">Instant messaging with WebSocket-based delivery. No refresh needed — messages arrive as they're sent.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+      <div class="feature-name">Daily Moments</div>
+      <div class="feature-desc">Capture and share photos with your rooms. Moments unlock at night — a daily ritual for you and your friends.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </div>
+      <div class="feature-name">Dark by Default</div>
+      <div class="feature-desc">Built for the night. A deep, dark interface with amber accents that's easy on the eyes in low light.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </div>
+      <div class="feature-name">12 Languages</div>
+      <div class="feature-desc">Fully localized interface including RTL support. Chat in your language with friends around the world.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </div>
+      <div class="feature-name">QR Code Sign-In</div>
+      <div class="feature-desc">Seamlessly transfer your session from mobile to desktop by scanning a QR code. No passwords needed.</div>
+    </div>
+  </div>
+
+  <!-- How to Install -->
+  <div id="install" class="section-title">How to Install</div>
+  <div class="steps" style="margin-bottom:12px;">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        <strong>Open ChatApp in your browser</strong>
+        <span>Visit the app URL on your mobile device. Sign in with Google or create an account.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        <strong>Android — Install the PWA</strong>
+        <span>Open Chrome, tap the menu (⋮) → "Add to Home Screen" → "Install". An icon will appear on your home screen just like a native app.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        <strong>iPhone / iPad — Install the PWA</strong>
+        <span>Open Safari, tap the Share icon → "Add to Home Screen" → "Add". ChatApp launches in full-screen, just like a native app.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        <strong>Done — you're all set!</strong>
+        <span>The app works offline, receives updates automatically, and feels just like a native app. No App Store needed.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code -->
+  <div class="qr-section">
+    <div class="qr-label">Scan with your phone to open ChatApp instantly</div>
+    <div id="dlQrCode"></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>ChatApp — Nightline Edition &middot; <a href="/">Open App</a></p>
+  </div>
+
+</div>
+<script>
+new QRCode(document.getElementById('dlQrCode'), {
+  text: window.location.origin + '/',
+  width: 180, height: 180,
+  colorDark: '#0A0F1C',
+  colorLight: '#FFFFFF',
+  correctLevel: QRCode.CorrectLevel.H
+});
+</script>
+</body>
+</html>

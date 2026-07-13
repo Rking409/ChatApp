@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ChatApp Premium</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async></script>
+<style>
+  :root {
+    --primary: #7C5CFC;
+    --primary-blue: #3B82F6;
+    --accent: #8B5CF6;
+    --glass-bg: rgba(255,255,255,0.72);
+    --glass-border: rgba(255,255,255,0.5);
+    --glass-shadow: 0 8px 32px rgba(124,92,252,0.15);
+    --text: #1A1A2E;
+    --text-secondary: #6B7280;
+    --bg-grad-1: #EEF2FF;
+    --bg-grad-2: #F5F3FF;
+    --bg-grad-3: #EDE9FE;
+    --success: #10B981;
+    --danger: #EF4444;
+    --warning: #F59E0B;
+    --online: #10B981;
+    --card-radius: 20px;
+    --pill-radius: 999px;
+    --shadow-deep: 0 25px 80px rgba(124,92,252,0.2), 0 0 0 1px rgba(255,255,255,0.1) inset;
+  }
+
+  [data-theme="dark"] {
+    --glass-bg: rgba(26,26,46,0.72);
+    --glass-border: rgba(255,255,255,0.08);
+    --glass-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    --text: #F3F4F6;
+    --text-secondary: #9CA3AF;
+    --bg-grad-1: #0F0F1A;
+    --bg-grad-2: #1A0B2E;
+    --bg-grad-3: #0F0F1A;
+    --shadow-deep: 0 25px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: linear-gradient(135deg, var(--bg-grad-1), var(--bg-grad-2), var(--bg-grad-3));
+    background-size: 400% 400%;
+    animation: bgShift 15s ease infinite;
+  }
+
+  @keyframes bgShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  #app {
+    width: 100%; height: 100vh;
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+
+  /* ---- Animations ---- */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes screenEnter { from { opacity: 0; transform: translateY(14px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideInRight { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes slideInLeft { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); } 50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); } }
+  @keyframes bounce { 0%,80%,100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes toastOut { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-10px) scale(0.95); } }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* ---- Glass Card ---- */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--glass-shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .glass-card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(124,92,252,0.2); }
+
+  .glass-card-gradient-border {
+    position: relative;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    border-radius: var(--card-radius);
+    padding: 1.5px;
+  }
+  .glass-card-gradient-border::before {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: var(--card-radius);
+    padding: 1.5px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ---- Screens ---- */
+  .screen {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column;
+    padding: 24px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    animation: screenEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .screen::-webkit-scrollbar { display: none; }
+  .screen.active { display: flex; }
+
+  /* ---- Setup / Auth ---- */
+  .setup-wrap {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 20px 8px; gap: 22px;
+  }
+  .setup-card {
+    margin: auto; padding: 40px 28px;
+    text-align: center; animation: slideUp 0.6s ease;
+    max-width: 340px; width: 100%;
+  }
+  .setup-logo {
+    width: 72px; height: 72px; border-radius: 20px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 24px;
+    box-shadow: 0 8px 24px rgba(124,92,252,0.3);
+  }
+  .setup-logo svg { width: 36px; height: 36px; }
+  .setup-title { font-size: 24px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .setup-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 28px; line-height: 1.5; }
+
+  .google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; padding: 14px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    color: var(--text);
+    font-size: 14px; font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: var(--glass-shadow);
+  }
+  .google-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,92,252,0.15); }
+  .google-btn:active { transform: scale(0.98); }
+
+  .divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 20px 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--glass-border); }
+
+  .input-field {
+    width: 100%; padding: 14px 18px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+  }
+  .input-field:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,92,252,0.15); }
+  .input-field::placeholder { color: var(--text-secondary); }
+
+  .btn-primary {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    border: none;
+    border-radius: var(--pill-radius);
+    color: white;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(124,92,252,0.3);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(124,92,252,0.4); }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    padding: 12px 18px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    color: var(--text);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-ghost:hover { background: rgba(124,92,252,0.08); }
+  .btn-ghost:active { transform: scale(0.98); }
+
+  .email-tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    background: rgba(124,92,252,0.1);
+    border: 1px solid rgba(124,92,252,0.2);
+    border-radius: var(--pill-radius);
+    font-size: 12px;
+    color: var(--primary);
+    margin-bottom: 20px;
+  }
+  .email-tag .avatar-sm {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+  }
+
+  .field-err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 6px; text-align: left; }
+
+  /* ---- Home Header ---- */
+  .home-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; padding-top: 8px;
+  }
+  .home-title { font-size: 28px; font-weight: 700; color: var(--text); }
+  .home-avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 700; font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: transform 0.2s ease;
+  }
+  .home-avatar:hover { transform: scale(1.05); }
+
+  /* ---- Home body tab transition ---- */
+  .home-body-fade { animation: screenEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* ---- Stories ---- */
+  .stories-row {
+    display: flex; gap: 14px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .stories-row::-webkit-scrollbar { display: none; }
+
+  .story-item {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .story-ring {
+    width: 64px; height: 64px; border-radius: 50%;
+    padding: 3px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue), #EC4899);
+    position: relative;
+  }
+  .story-ring.online::after {
+    content: '';
+    position: absolute; bottom: 2px; right: 2px;
+    width: 14px; height: 14px;
+    background: var(--online);
+    border: 2.5px solid var(--glass-bg);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  .story-inner {
+    width: 100%; height: 100%; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 700; font-size: 18px;
+  }
+  .story-name { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+
+  .section-title {
+    font-size: 12px; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 12px;
+  }
+
+  /* ---- Chat Rows ---- */
+  .chat-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    position: relative;
+  }
+  .chat-avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 700; font-size: 16px;
+    flex-shrink: 0; position: relative;
+  }
+  .chat-avatar.online::after {
+    content: '';
+    position: absolute; bottom: 12px; left: 52px;
+    width: 12px; height: 12px;
+    background: var(--online);
+    border: 2.5px solid var(--glass-bg);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  .chat-info { flex: 1; min-width: 0; }
+  .chat-name { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .chat-preview { font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .chat-time { font-size: 11px; color: var(--text-secondary); }
+  .unread-badge {
+    min-width: 20px; height: 20px;
+    padding: 0 6px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    border-radius: var(--pill-radius);
+    color: white; font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ---- Bottom Nav ---- */
+  .bottom-nav {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    box-shadow: var(--glass-shadow);
+    z-index: 100;
+  }
+  .nav-tab {
+    position: relative;
+    padding: 10px 20px;
+    border-radius: var(--pill-radius);
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px; font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none; background: transparent;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .nav-tab.active {
+    color: white;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    box-shadow: 0 4px 12px rgba(124,92,252,0.3);
+  }
+  .nav-tab .tab-icon { width: 18px; height: 18px; }
+  .nav-tab .nav-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--danger); display: none;
+  }
+  .nav-tab .nav-dot.visible { display: block; }
+
+  /* ---- Chat Screen ---- */
+  .chat-header-glass {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    margin: -24px -24px 16px -24px;
+    position: sticky; top: -24px; z-index: 10;
+  }
+  .chat-header-back {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 20px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .chat-header-back:hover { background: rgba(124,92,252,0.1); }
+  .chat-header-info { flex: 1; min-width: 0; }
+  .chat-header-name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .chat-header-status { font-size: 12px; color: var(--online); display: flex; align-items: center; gap: 6px; }
+  .chat-header-actions { display: flex; gap: 8px; }
+  .header-action-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--text);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .header-action-btn:hover { background: rgba(124,92,252,0.1); }
+
+  .room-color-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  .messages-area {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow-y: auto;
+    padding: 8px 0;
+    min-height: 0;
+  }
+
+  .date-separator {
+    text-align: center; margin: 16px 0;
+  }
+  .date-separator span {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    padding: 4px 14px;
+    border-radius: var(--pill-radius);
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--glass-border);
+  }
+
+  .join-marker-glass {
+    align-self: center;
+    font-size: 11px; color: var(--text-secondary);
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    padding: 4px 14px;
+    border-radius: var(--pill-radius);
+    border: 1px solid var(--glass-border);
+    margin: 8px 0;
+  }
+
+  .msg-bubble {
+    max-width: 78%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.45;
+    position: relative;
+    animation: fadeIn 0.3s ease;
+    word-break: break-word;
+  }
+  .msg-sent {
+    align-self: flex-end;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-received {
+    align-self: flex-start;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+  .msg-sender-name {
+    font-size: 11px; color: var(--primary); font-weight: 600;
+    margin: 0 4px 2px 4px; align-self: flex-start;
+  }
+  .msg-meta {
+    display: flex; align-items: center; gap: 4px;
+    margin-top: 4px;
+    font-size: 10px;
+    opacity: 0.7;
+    justify-content: flex-end;
+  }
+  .msg-sent .msg-meta { color: rgba(255,255,255,0.8); }
+  .msg-received .msg-meta { color: var(--text-secondary); }
+  .checkmarks { display: flex; align-items: center; }
+  .checkmarks svg { width: 12px; height: 12px; }
+
+  .typing-indicator {
+    display: flex; align-items: center; gap: 3px;
+    padding: 14px 16px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+    width: fit-content;
+  }
+  .typing-indicator span {
+    width: 7px; height: 7px;
+    background: var(--text-secondary);
+    border-radius: 50%;
+    animation: bounce 1.4s ease-in-out infinite both;
+  }
+  .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+  .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+  .chat-input-area {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    margin: 0 -24px -24px -24px;
+    position: sticky; bottom: -24px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(1.4);
+    border-top: 1px solid var(--glass-border);
+  }
+  .chat-input {
+    flex: 1;
+    padding: 12px 18px;
+    background: rgba(124,92,252,0.06);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+  }
+  .chat-input:focus { border-color: var(--primary); background: rgba(124,92,252,0.1); }
+  .chat-input::placeholder { color: var(--text-secondary); }
+  .input-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .input-btn:hover { color: var(--primary); background: rgba(124,92,252,0.1); }
+  .send-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-blue));
+    border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: white;
+    box-shadow: 0 4px 12px rgba(124,92,252,0.3);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+  .send-btn:hover { transform: scale(1.05); box-shadow: 0 6px 16px rgba(124,92,252,0.4); }
+  .send-btn:active { transform: scale(0.95); }
+
+  .empty-chat {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); font-size: 14px; text-align: center; padding: 30px;
+  }
+
+  /* ---- Settings ---- */
+  .settings-profile {
+    padding: 24px; margin-bottom: 20px; text-align: center;
+  }
+  .settings-avatar-lg {
+    width: 80px; height: 80px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 700; font-size: 32px;
+    margin: 0 auto 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  .settings-name { font-size: 18px; font-weight: 700; color: var(--text); }
+  .settings-handle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+  .settings-email { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .settings-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+  }
+  .settings-icon {
+    width: 36px; height: 36px;
+    border-radius: 12px;
+    background: rgba(124,92,252,0.1);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+  .settings-label { flex: 1; font-size: 14px; font-weight: 500; color: var(--text); }
+  .settings-chevron { color: var(--text-secondary); font-size: 14px; }
+  .settings-val { color: var(--text-secondary); font-size: 13px; }
+
+  /* ---- Friends ---- */
+  .friend-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+  }
+  .friend-actions { display: flex; gap: 8px; }
+  .btn-accept-green {
+    padding: 7px 16px;
+    background: linear-gradient(135deg, var(--success), #34D399);
+    border: none; border-radius: var(--pill-radius);
+    color: white; font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+    transition: all 0.2s ease;
+  }
+  .btn-accept-green:hover { transform: translateY(-1px); }
+  .btn-accept-green:active { transform: scale(0.95); }
+  .btn-decline-ghost {
+    padding: 7px 16px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    color: var(--text-secondary); font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-decline-ghost:hover { background: rgba(239,68,68,0.08); color: var(--danger); }
+  .pending-tag { font-size: 12px; color: var(--text-secondary); }
+
+  .add-friend-bar {
+    display: flex; gap: 10px;
+    margin-bottom: 16px;
+  }
+  .add-friend-bar input { flex: 1; }
+
+  /* ---- Modal ---- */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.3);
+    backdrop-filter: blur(4px);
+    display: none; align-items: flex-end; justify-content: center;
+    z-index: 200;
+    animation: fadeIn 0.2s ease;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-sheet {
+    width: 100%; max-width: 480px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius) var(--card-radius) 0 0;
+    padding: 20px 24px 32px;
+    display: flex; flex-direction: column; gap: 14px;
+    max-height: 82vh; overflow-y: auto;
+    animation: slideUp 0.3s ease;
+  }
+  .modal-handle {
+    width: 40px; height: 4px;
+    background: var(--text-secondary);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+    opacity: 0.4;
+  }
+  .modal-title { font-size: 19px; font-weight: 700; color: var(--text); }
+  .modal-subtitle { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+  .modal-close-btn {
+    align-self: flex-end;
+    color: var(--text-secondary);
+    font-size: 13px; padding: 4px 8px;
+    background: none; border: none; cursor: pointer;
+  }
+
+  .lang-option {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--glass-border);
+    font-size: 15px; cursor: pointer;
+    color: var(--text);
+  }
+  .lang-option:last-child { border-bottom: none; }
+  .lang-option.selected { color: var(--primary); font-weight: 600; }
+
+  .color-grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0; }
+  .color-swatch {
+    width: 38px; height: 38px; border-radius: 50%;
+    cursor: pointer; border: 3px solid transparent;
+    transition: transform 0.2s ease;
+  }
+  .color-swatch:hover { transform: scale(1.1); }
+  .color-swatch.selected { border-color: var(--text); }
+
+  /* ---- Toast ---- */
+  .toast-container {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 300;
+    display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 10px 18px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--pill-radius);
+    color: var(--text);
+    font-size: 13px; font-weight: 500;
+    box-shadow: var(--glass-shadow);
+    animation: toastIn 0.3s ease;
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+  }
+  .toast.out { animation: toastOut 0.3s ease forwards; }
+
+  /* ---- Skeleton ---- */
+  .skeleton {
+    background: linear-gradient(90deg, rgba(124,92,252,0.08) 25%, rgba(124,92,252,0.15) 50%, rgba(124,92,252,0.08) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 8px;
+  }
+
+  /* ---- Loading Screen ---- */
+  .loading-screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    z-index: 50;
+  }
+  .loading-spinner {
+    width: 48px; height: 48px;
+    border: 3px solid var(--glass-border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .loading-text { color: var(--text-secondary); font-size: 14px; }
+
+  /* ---- Empty States ---- */
+  .empty-note {
+    color: var(--text-secondary); font-size: 14px;
+    padding: 40px 24px; text-align: center; line-height: 1.6;
+  }
+
+  /* ---- Scrollbar ---- */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 6px; }
+
+  /* ---- RTL ---- */
+  [dir="rtl"] .chat-header-glass, [dir="rtl"] .chat-row, [dir="rtl"] .friend-row { direction: rtl; }
+  [dir="rtl"] .chat-meta { align-items: flex-start; }
+  [dir="rtl"] .msg-sent { align-self: flex-start; border-bottom-right-radius: 18px; border-bottom-left-radius: 4px; }
+  [dir="rtl"] .msg-received { align-self: flex-end; border-bottom-left-radius: 18px; border-bottom-right-radius: 4px; }
+
+  /* ---- Reduced Motion ---- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ---- Mobile tweaks ---- */
+  @media (max-width: 480px) {
+    .screen { padding: 16px; }
+    .chat-header-glass { margin: -16px -16px 12px -16px; }
+    .chat-input-area { margin: 0 -16px -16px -16px; }
+    .home-title { font-size: 24px; }
+    .setup-card { padding: 32px 20px; }
+  }
+</style>
+<base target="_blank">
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ============ CONFIG ============
+const API_BASE = 'https://chatapp-production-765d.up.railway.app';
+const GOOGLE_CLIENT_ID = '627215311300-t7g66rtc5uue1tnr1v622uvd75fappp2.apps.googleusercontent.com';
+
+const ROOM_COLOR_PRESETS = ['#7C5CFC', '#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#EF4444', '#14B8A6', '#8B5CF6'];
+const DEFAULT_ROOM_COLOR = '#7C5CFC';
+
+// ============ I18N ============
+const SUPPORTED_LANGS = [
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'pt', label: 'Português' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'hi', label: 'हिन्दी' },
+  { code: 'zh', label: '中文' },
+  { code: 'ja', label: '日本語' },
+  { code: 'ko', label: '한국어' },
+];
+const RTL_LANGS = ['ar'];
+
+const STRINGS = {
+  en: { appTitle:"ChatApp", signInTitle:'Welcome back', signInSub:'Sign in to start chatting with friends in real-time.', pickNameTitle:'Pick your username', pickNameSub:"This is how friends will find you. Choose something they'd recognize.", usernamePh:'e.g. sam, kayla_v, theo99', claim:'Claim it', claiming:'Claiming...', typeUsernameFirst:'Type a username first.', usernameRule:'Letters, numbers, underscores only (2-20 chars).', chats:'Chats', friends:'Friends', settings:'Settings', requests:'Requests', sent:'Sent', pending:'pending', noFriendsYet:'No friends yet — add someone by their username to get started.', addFriend:'Add friend', addFriendTitle:'Add a friend', addFriendSub:"They'll get a request to approve before you're connected.", friendPh:'their username', sendRequest:'Send request', sending:'Sending...', typeUsername:'Type a username.', accept:'Accept', decline:'Decline', noRoomsYet:'No chats yet. Start one and share the code with friends, or join with a code someone gave you.', newRoom:'New room', joinWithCode:'Join with code', newRoomTitle:'New room', newRoomSub:'Give it a name, then share the code that shows up with friends.', roomNamePh:'e.g. weekend plans', createRoom:'Create room', creating:'Creating...', joinRoomTitle:'Join with a code', joinRoomSub:"You'll see messages from the moment you join onward.", codePh:'e.g. K7P3QM', join:'Join room', joining:'Joining...', enterCode:'Enter a room code.', close:'Close', members:'members', member:'member', copyCode:'Copy code', copied:'Copied!', typeMessage:'Type your message...', quietRoom:"It's quiet in here. Say hi — this is where the conversation starts for you.", youJoined:'you joined this room', language:'Language', signOut:'Sign out', signedInAs:'signed in as', roomColor:'Room color', appearance:'Appearance', version:'Version', autoWord:'Auto', appearanceVal:'Follows your device', themeLight:'Light', themeDark:'Dark' },
+  es: { appTitle:"ChatApp", signInTitle:'Bienvenido de nuevo', signInSub:'Inicia sesión para comenzar a chatear con amigos en tiempo real.', pickNameTitle:'Elige tu nombre de usuario', pickNameSub:'Así te encontrarán tus amigos. Elige algo reconocible.', usernamePh:'ej. sam, kayla_v, theo99', claim:'Confirmar', claiming:'Confirmando...', typeUsernameFirst:'Escribe un nombre de usuario primero.', usernameRule:'Solo letras, números y guiones bajos (2-20 caracteres).', chats:'Chats', friends:'Amigos', settings:'Ajustes', requests:'Solicitudes', sent:'Enviadas', pending:'pendiente', noFriendsYet:'Aún no tienes amigos — agrega a alguien por su nombre de usuario.', addFriend:'Agregar amigo', addFriendTitle:'Agregar un amigo', addFriendSub:'Deberán aceptar antes de conectarse.', friendPh:'su nombre de usuario', sendRequest:'Enviar solicitud', sending:'Enviando...', typeUsername:'Escribe un nombre de usuario.', accept:'Aceptar', decline:'Rechazar', noRoomsYet:'Aún no hay chats. Crea uno y comparte el código, o únete con un código.', newRoom:'Nueva sala', joinWithCode:'Unirse con código', newRoomTitle:'Nueva sala', newRoomSub:'Dale un nombre y comparte el código con tus amigos.', roomNamePh:'ej. plan del fin de semana', createRoom:'Crear sala', creating:'Creando...', joinRoomTitle:'Unirse con un código', joinRoomSub:'Verás los mensajes desde el momento en que te unas.', codePh:'ej. K7P3QM', join:'Unirse', joining:'Uniendo...', enterCode:'Ingresa un código de sala.', close:'Cerrar', members:'miembros', member:'miembro', copyCode:'Copiar código', copied:'¡Copiado!', typeMessage:'Escribe tu mensaje...', quietRoom:'Está tranquilo aquí. Saluda — aquí empieza tu conversación.', youJoined:'te uniste a esta sala', language:'Idioma', signOut:'Cerrar sesión', signedInAs:'sesión iniciada como', roomColor:'Color de la sala', appearance:'Apariencia', appearanceVal:'Según tu dispositivo', version:'Versión', autoWord:'Automático', themeLight:'Claro', themeDark:'Oscuro' },
+  fr: { appTitle:"ChatApp", signInTitle:'Bon retour', signInSub:'Connectez-vous pour discuter avec vos amis en temps réel.', pickNameTitle:'Choisissez votre nom', pickNameSub:"C'est ainsi que vos amis vous trouveront. Choisissez quelque chose de reconnaissable.", usernamePh:'ex. sam, kayla_v, theo99', claim:'Valider', claiming:'Validation...', typeUsernameFirst:"Entrez d'abord un nom d'utilisateur.", usernameRule:'Lettres, chiffres, underscores uniquement (2-20 caractères).', chats:'Discussions', friends:'Amis', settings:'Réglages', requests:'Demandes', sent:'Envoyées', pending:'en attente', noFriendsYet:"Pas encore d'amis — ajoutez quelqu'un par son nom d'utilisateur.", addFriend:'Ajouter un ami', addFriendTitle:'Ajouter un ami', addFriendSub:'Il devra accepter avant que vous soyez connectés.', friendPh:"son nom d'utilisateur", sendRequest:'Envoyer la demande', sending:'Envoi...', typeUsername:"Entrez un nom d'utilisateur.", accept:'Accepter', decline:'Refuser', noRoomsYet:'Pas encore de discussions. Créez-en une ou rejoignez avec un code.', newRoom:'Nouveau salon', joinWithCode:'Rejoindre avec un code', newRoomTitle:'Nouveau salon', newRoomSub:'Donnez-lui un nom, puis partagez le code avec vos amis.', roomNamePh:'ex. plans du week-end', createRoom:'Créer le salon', creating:'Création...', joinRoomTitle:'Rejoindre avec un code', joinRoomSub:'Vous verrez les messages à partir du moment où vous rejoignez.', codePh:'ex. K7P3QM', join:'Rejoindre', joining:'Connexion...', enterCode:'Entrez un code de salon.', close:'Fermer', members:'membres', member:'membre', copyCode:'Copier le code', copied:'Copié !', typeMessage:'Écrivez votre message...', quietRoom:"C'est calme ici. Dites bonjour pour commencer la conversation.", youJoined:'vous avez rejoint ce salon', language:'Langue', signOut:'Se déconnecter', signedInAs:'connecté en tant que', roomColor:'Couleur du salon', appearance:'Apparence', appearanceVal:'Selon votre appareil', version:'Version', autoWord:'Auto', themeLight:'Clair', themeDark:'Sombre' },
+  de: { appTitle:"ChatApp", signInTitle:'Willkommen zurück', signInSub:'Melde dich an, um in Echtzeit mit Freunden zu chatten.', pickNameTitle:'Wähle deinen Namen', pickNameSub:'So finden dich deine Freunde. Wähle etwas Wiedererkennbares.', usernamePh:'z. B. sam, kayla_v, theo99', claim:'Bestätigen', claiming:'Bestätigen...', typeUsernameFirst:'Gib zuerst einen Benutzernamen ein.', usernameRule:'Nur Buchstaben, Zahlen, Unterstriche (2-20 Zeichen).', chats:'Chats', friends:'Freunde', settings:'Einstellungen', requests:'Anfragen', sent:'Gesendet', pending:'ausstehend', noFriendsYet:'Noch keine Freunde — füge jemanden per Benutzername hinzu.', addFriend:'Freund hinzufügen', addFriendTitle:'Freund hinzufügen', addFriendSub:'Er muss zustimmen, bevor ihr verbunden seid.', friendPh:'Benutzername', sendRequest:'Anfrage senden', sending:'Senden...', typeUsername:'Gib einen Benutzernamen ein.', accept:'Annehmen', decline:'Ablehnen', noRoomsYet:'Noch keine Chats. Erstelle einen oder tritt mit einem Code bei.', newRoom:'Neuer Raum', joinWithCode:'Mit Code beitreten', newRoomTitle:'Neuer Raum', newRoomSub:'Gib ihm einen Namen und teile den Code mit Freunden.', roomNamePh:'z. B. Wochenendpläne', createRoom:'Raum erstellen', creating:'Erstellen...', joinRoomTitle:'Mit Code beitreten', joinRoomSub:'Du siehst Nachrichten ab dem Moment deines Beitritts.', codePh:'z. B. K7P3QM', join:'Beitreten', joining:'Beitreten...', enterCode:'Gib einen Raumcode ein.', close:'Schließen', members:'Mitglieder', member:'Mitglied', copyCode:'Code kopieren', copied:'Kopiert!', typeMessage:'Nachricht schreiben...', quietRoom:'Hier ist es still. Sag Hallo — hier beginnt dein Gespräch.', youJoined:'du bist diesem Raum beigetreten', language:'Sprache', signOut:'Abmelden', signedInAs:'angemeldet als', roomColor:'Raumfarbe', appearance:'Erscheinungsbild', appearanceVal:'Folgt deinem Gerät', version:'Version', autoWord:'Automatisch', themeLight:'Hell', themeDark:'Dunkel' },
+  pt: { appTitle:"ChatApp", signInTitle:'Bem-vindo de volta', signInSub:'Entre para começar a conversar com amigos em tempo real.', pickNameTitle:'Escolha seu nome', pickNameSub:'É assim que seus amigos te encontram. Escolha algo reconhecível.', usernamePh:'ex. sam, kayla_v, theo99', claim:'Confirmar', claiming:'Confirmando...', typeUsernameFirst:'Digite um nome de usuário primeiro.', usernameRule:'Apenas letras, números e underscores (2-20 caracteres).', chats:'Conversas', friends:'Amigos', settings:'Configurações', requests:'Solicitações', sent:'Enviadas', pending:'pendente', noFriendsYet:'Ainda sem amigos — adicione alguém pelo nome de usuário.', addFriend:'Adicionar amigo', addFriendTitle:'Adicionar um amigo', addFriendSub:'A pessoa precisa aceitar antes de vocês se conectarem.', friendPh:'nome de usuário dela', sendRequest:'Enviar solicitação', sending:'Enviando...', typeUsername:'Digite um nome de usuário.', accept:'Aceitar', decline:'Recusar', noRoomsYet:'Ainda sem conversas. Crie uma ou entre com um código.', newRoom:'Nova sala', joinWithCode:'Entrar com código', newRoomTitle:'Nova sala', newRoomSub:'Dê um nome e compartilhe o código com amigos.', roomNamePh:'ex. planos do fim de semana', createRoom:'Criar sala', creating:'Criando...', joinRoomTitle:'Entrar com um código', joinRoomSub:'Você verá as mensagens a partir do momento em que entrar.', codePh:'ex. K7P3QM', join:'Entrar', joining:'Entrando...', enterCode:'Digite um código de sala.', close:'Fechar', members:'membros', member:'membro', copyCode:'Copiar código', copied:'Copiado!', typeMessage:'Digite sua mensagem...', quietRoom:'Está quieto por aqui. Diga oi — é aqui que sua conversa começa.', youJoined:'você entrou nesta sala', language:'Idioma', signOut:'Sair', signedInAs:'conectado como', roomColor:'Cor da sala', appearance:'Aparência', appearanceVal:'Segue seu dispositivo', version:'Versão', autoWord:'Automático', themeLight:'Claro', themeDark:'Escuro' },
+  it: { appTitle:"ChatApp", signInTitle:'Bentornato', signInSub:'Accedi per iniziare a chattare con gli amici in tempo reale.', pickNameTitle:'Scegli il tuo nome', pickNameSub:'È così che i tuoi amici ti troveranno. Scegli qualcosa di riconoscibile.', usernamePh:'es. sam, kayla_v, theo99', claim:'Conferma', claiming:'Conferma...', typeUsernameFirst:'Inserisci prima un nome utente.', usernameRule:'Solo lettere, numeri e underscore (2-20 caratteri).', chats:'Chat', friends:'Amici', settings:'Impostazioni', requests:'Richieste', sent:'Inviate', pending:'in attesa', noFriendsYet:'Ancora nessun amico — aggiungine uno tramite nome utente.', addFriend:'Aggiungi amico', addFriendTitle:'Aggiungi un amico', addFriendSub:'Dovrà accettare prima che siate connessi.', friendPh:'il suo nome utente', sendRequest:'Invia richiesta', sending:'Invio...', typeUsername:'Inserisci un nome utente.', accept:'Accetta', decline:'Rifiuta', noRoomsYet:'Ancora nessuna chat. Creane una o unisciti con un codice.', newRoom:'Nuova stanza', joinWithCode:'Unisciti con codice', newRoomTitle:'Nuova stanza', newRoomSub:'Dalle un nome e condividi il codice con gli amici.', roomNamePh:'es. piani del weekend', createRoom:'Crea stanza', creating:'Creazione...', joinRoomTitle:'Unisciti con un codice', joinRoomSub:'Vedrai i messaggi da quando ti unisci in poi.', codePh:'es. K7P3QM', join:'Unisciti', joining:'Ingresso...', enterCode:'Inserisci un codice stanza.', close:'Chiudi', members:'membri', member:'membro', copyCode:'Copia codice', copied:'Copiato!', typeMessage:'Scrivi il tuo messaggio...', quietRoom:'Qui è tutto tranquillo. Saluta — è qui che inizia la tua conversazione.', youJoined:'ti sei unito a questa stanza', language:'Lingua', signOut:'Esci', signedInAs:'connesso come', roomColor:'Colore stanza', appearance:'Aspetto', appearanceVal:'Segue il dispositivo', version:'Versione', autoWord:'Automatico', themeLight:'Chiaro', themeDark:'Scuro' },
+  ru: { appTitle:"ChatApp", signInTitle:'С возвращением', signInSub:'Войдите, чтобы общаться с друзьями в реальном времени.', pickNameTitle:'Выберите имя', pickNameSub:'Так вас найдут друзья. Выберите что-то узнаваемое.', usernamePh:'напр. sam, kayla_v, theo99', claim:'Подтвердить', claiming:'Подтверждение...', typeUsernameFirst:'Сначала введите имя пользователя.', usernameRule:'Только буквы, цифры и подчёркивания (2-20 символов).', chats:'Чаты', friends:'Друзья', settings:'Настройки', requests:'Заявки', sent:'Отправленные', pending:'в ожидании', noFriendsYet:'Пока нет друзей — добавьте кого-то по имени пользователя.', addFriend:'Добавить друга', addFriendTitle:'Добавить друга', addFriendSub:'Он должен принять заявку, прежде чем вы будете связаны.', friendPh:'его имя пользователя', sendRequest:'Отправить заявку', sending:'Отправка...', typeUsername:'Введите имя пользователя.', accept:'Принять', decline:'Отклонить', noRoomsYet:'Пока нет чатов. Создайте один или присоединитесь по коду.', newRoom:'Новая комната', joinWithCode:'Войти по коду', newRoomTitle:'Новая комната', newRoomSub:'Дайте название и поделитесь кодом с друзьями.', roomNamePh:'напр. планы на выходные', createRoom:'Создать комнату', creating:'Создание...', joinRoomTitle:'Войти по коду', joinRoomSub:'Вы увидите сообщения с момента входа.', codePh:'напр. K7P3QM', join:'Войти', joining:'Вход...', enterCode:'Введите код комнаты.', close:'Закрыть', members:'участников', member:'участник', copyCode:'Копировать код', copied:'Скопировано!', typeMessage:'Введите сообщение...', quietRoom:'Здесь тихо. Поздоровайтесь — так начнётся ваш разговор.', youJoined:'вы присоединились к этой комнате', language:'Язык', signOut:'Выйти', signedInAs:'вы вошли как', roomColor:'Цвет комнаты', appearance:'Оформление', appearanceVal:'Как на устройстве', version:'Версия', autoWord:'Авто', themeLight:'Светлая', themeDark:'Тёмная' },
+  ar: { appTitle:"ChatApp", signInTitle:'مرحباً بعودتك', signInSub:'سجّل الدخول لبدء الدردشة مع الأصدقاء في الوقت الفعلي.', pickNameTitle:'اختر اسمك', pickNameSub:'هكذا سيجدك أصدقاؤك. اختر اسمًا مميزًا.', usernamePh:'مثال: sam, kayla_v, theo99', claim:'تأكيد', claiming:'جارٍ التأكيد...', typeUsernameFirst:'اكتب اسم مستخدم أولاً.', usernameRule:'أحرف وأرقام وشرطة سفلية فقط (٢-٢٠ حرفًا).', chats:'المحادثات', friends:'الأصدقاء', settings:'الإعدادات', requests:'الطلبات', sent:'المرسلة', pending:'قيد الانتظار', noFriendsYet:'لا يوجد أصدقاء بعد — أضف شخصًا باسم المستخدم.', addFriend:'إضافة صديق', addFriendTitle:'إضافة صديق', addFriendSub:'يجب أن يوافق قبل أن تصبحا متصلين.', friendPh:'اسم المستخدم', sendRequest:'إرسال طلب', sending:'جارٍ الإرسال...', typeUsername:'اكتب اسم مستخدم.', accept:'قبول', decline:'رفض', noRoomsYet:'لا توجد محادثات بعد. أنشئ واحدة أو انضم برمز.', newRoom:'غرفة جديدة', joinWithCode:'الانضمام برمز', newRoomTitle:'غرفة جديدة', newRoomSub:'أعطها اسمًا وشارك الرمز مع أصدقائك.', roomNamePh:'مثال: خطط نهاية الأسبوع', createRoom:'إنشاء الغرفة', creating:'جارٍ الإنشاء...', joinRoomTitle:'الانضمام برمز', joinRoomSub:'سترى الرسائل من لحظة انضمامك فصاعدًا.', codePh:'مثال: K7P3QM', join:'انضمام', joining:'جارٍ الانضمام...', enterCode:'أدخل رمز الغرفة.', close:'إغلاق', members:'أعضاء', member:'عضو', copyCode:'نسخ الرمز', copied:'تم النسخ!', typeMessage:'اكتب رسالتك...', quietRoom:'الأمر هادئ هنا. قل مرحبًا — من هنا تبدأ محادثتك.', youJoined:'لقد انضممت إلى هذه الغرفة', language:'اللغة', signOut:'تسجيل الخروج', signedInAs:'مسجّل الدخول باسم', roomColor:'لون الغرفة', appearance:'المظهر', appearanceVal:'يتبع جهازك', version:'الإصدار', autoWord:'تلقائي', themeLight:'فاتح', themeDark:'داكن' },
+  hi: { appTitle:"ChatApp", signInTitle:'वापसी पर स्वागत', signInSub:'रियल-टाइम में दोस्तों से चैट करने के लिए साइन इन करें।', pickNameTitle:'अपना नाम चुनें', pickNameSub:'इसी से दोस्त आपको ढूंढेंगे। कुछ पहचाने जाने वाला चुनें।', usernamePh:'जैसे sam, kayla_v, theo99', claim:'पुष्टि करें', claiming:'पुष्टि हो रही है...', typeUsernameFirst:'पहले यूज़रनेम लिखें।', usernameRule:'केवल अक्षर, संख्याएँ, अंडरस्कोर (2-20 अक्षर)।', chats:'चैट्स', friends:'दोस्त', settings:'सेटिंग्स', requests:'अनुरोध', sent:'भेजे गए', pending:'लंबित', noFriendsYet:'अभी कोई दोस्त नहीं — यूज़रनेम से किसी को जोड़ें।', addFriend:'दोस्त जोड़ें', addFriendTitle:'दोस्त जोड़ें', addFriendSub:'जुड़ने से पहले उन्हें स्वीकृति देनी होगी।', friendPh:'उनका यूज़रनेम', sendRequest:'अनुरोध भेजें', sending:'भेजा जा रहा है...', typeUsername:'यूज़रनेम लिखें।', accept:'स्वीकार करें', decline:'अस्वीकार करें', noRoomsYet:'अभी कोई चैट नहीं। एक बनाएं या कोड से जुड़ें।', newRoom:'नया रूम', joinWithCode:'कोड से जुड़ें', newRoomTitle:'नया रूम', newRoomSub:'इसे नाम दें और कोड दोस्तों के साथ साझा करें।', roomNamePh:'जैसे वीकेंड प्लान्स', createRoom:'रूम बनाएं', creating:'बन रहा है...', joinRoomTitle:'कोड से जुड़ें', joinRoomSub:'आप जुड़ने के पल से संदेश देखेंगे।', codePh:'जैसे K7P3QM', join:'जुड़ें', joining:'जुड़ रहे हैं...', enterCode:'रूम कोड डालें।', close:'बंद करें', members:'सदस्य', member:'सदस्य', copyCode:'कोड कॉपी करें', copied:'कॉपी हो गया!', typeMessage:'अपना संदेश लिखें...', quietRoom:'यहाँ शांति है। हाय कहें — यहीं से आपकी बातचीत शुरू होती है।', youJoined:'आप इस रूम में शामिल हुए', language:'भाषा', signOut:'साइन आउट करें', signedInAs:'इस रूप में साइन इन', roomColor:'रूम रंग', appearance:'दिखावट', appearanceVal:'आपके डिवाइस के अनुसार', version:'संस्करण', autoWord:'स्वतः', themeLight:'हल्का', themeDark:'गहरा' },
+  zh: { appTitle:"ChatApp", signInTitle:'欢迎回来', signInSub:'登录以开始与好友实时聊天。', pickNameTitle:'选择你的用户名', pickNameSub:'朋友会通过这个名字找到你，选一个易于识别的。', usernamePh:'例如 sam、kayla_v、theo99', claim:'确认', claiming:'确认中...', typeUsernameFirst:'请先输入用户名。', usernameRule:'仅限字母、数字、下划线（2-20 个字符）。', chats:'聊天', friends:'好友', settings:'设置', requests:'请求', sent:'已发送', pending:'待处理', noFriendsYet:'还没有好友 — 通过用户名添加一位吧。', addFriend:'添加好友', addFriendTitle:'添加好友', addFriendSub:'对方需要接受后才能建立联系。', friendPh:'对方用户名', sendRequest:'发送请求', sending:'发送中...', typeUsername:'请输入用户名。', accept:'接受', decline:'拒绝', noRoomsYet:'还没有聊天。创建一个，或使用代码加入。', newRoom:'新建房间', joinWithCode:'使用代码加入', newRoomTitle:'新建房间', newRoomSub:'起个名字，然后把代码分享给朋友。', roomNamePh:'例如 周末计划', createRoom:'创建房间', creating:'创建中...', joinRoomTitle:'使用代码加入', joinRoomSub:'你将看到加入之后的消息。', codePh:'例如 K7P3QM', join:'加入', joining:'加入中...', enterCode:'请输入房间代码。', close:'关闭', members:'名成员', member:'名成员', copyCode:'复制代码', copied:'已复制！', typeMessage:'输入消息...', quietRoom:'这里很安静，打个招呼开始对话吧。', youJoined:'你已加入此房间', language:'语言', signOut:'退出登录', signedInAs:'已登录为', roomColor:'房间颜色', appearance:'外观', appearanceVal:'跟随设备设置', version:'版本', autoWord:'自动', themeLight:'浅色', themeDark:'深色' },
+  ja: { appTitle:"ChatApp", signInTitle:'おかえりなさい', signInSub:'サインインして、友達とリアルタイムでチャットしましょう。', pickNameTitle:'ユーザー名を選んでください', pickNameSub:'友達はこの名前であなたを見つけます。わかりやすい名前にしましょう。', usernamePh:'例: sam, kayla_v, theo99', claim:'確定する', claiming:'確定中...', typeUsernameFirst:'先にユーザー名を入力してください。', usernameRule:'英数字とアンダースコアのみ（2〜20文字）。', chats:'チャット', friends:'友達', settings:'設定', requests:'リクエスト', sent:'送信済み', pending:'保留中', noFriendsYet:'まだ友達がいません — ユーザー名で誰かを追加しましょう。', addFriend:'友達を追加', addFriendTitle:'友達を追加', addFriendSub:'相手が承認するとつながります。', friendPh:'相手のユーザー名', sendRequest:'リクエストを送る', sending:'送信中...', typeUsername:'ユーザー名を入力してください。', accept:'承認', decline:'拒否', noRoomsYet:'まだチャットがありません。作成するか、コードで参加しましょう。', newRoom:'新しいルーム', joinWithCode:'コードで参加', newRoomTitle:'新しいルーム', newRoomSub:'名前を付けて、表示されるコードを友達と共有しましょう。', roomNamePh:'例: 週末の予定', createRoom:'ルームを作成', creating:'作成中...', joinRoomTitle:'コードで参加', joinRoomSub:'参加した時点からのメッセージが表示されます。', codePh:'例: K7P3QM', join:'参加する', joining:'参加中...', enterCode:'ルームコードを入力してください。', close:'閉じる', members:'人のメンバー', member:'人のメンバー', copyCode:'コードをコピー', copied:'コピーしました！', typeMessage:'メッセージを入力...', quietRoom:'ここは静かですね。挨拶してみましょう。', youJoined:'このルームに参加しました', language:'言語', signOut:'サインアウト', signedInAs:'サインイン中:', roomColor:'ルームカラー', appearance:'外観', appearanceVal:'デバイスの設定に従う', version:'バージョン', autoWord:'自動', themeLight:'ライト', themeDark:'ダーク' },
+  ko: { appTitle:"ChatApp", signInTitle:'다시 오신 것을 환영합니다', signInSub:'로그인하여 실시간으로 친구들과 채팅하세요.', pickNameTitle:'사용자 이름을 선택하세요', pickNameSub:'친구들은 이 이름으로 당신을 찾습니다. 알아보기 쉬운 이름을 고르세요.', usernamePh:'예: sam, kayla_v, theo99', claim:'확정하기', claiming:'확정 중...', typeUsernameFirst:'먼저 사용자 이름을 입력하세요.', usernameRule:'영문, 숫자, 밑줄만 사용 (2-20자).', chats:'채팅', friends:'친구', settings:'설정', requests:'요청', sent:'보낸 요청', pending:'대기 중', noFriendsYet:'아직 친구가 없습니다 — 사용자 이름으로 친구를 추가하세요.', addFriend:'친구 추가', addFriendTitle:'친구 추가', addFriendSub:'상대가 수락해야 연결됩니다.', friendPh:'상대방 사용자 이름', sendRequest:'요청 보내기', sending:'보내는 중...', typeUsername:'사용자 이름을 입력하세요.', accept:'수락', decline:'거절', noRoomsYet:'아직 채팅이 없습니다. 새로 만들거나 코드로 참여하세요.', newRoom:'새 채팅방', joinWithCode:'코드로 참여', newRoomTitle:'새 채팅방', newRoomSub:'이름을 지정하고 표시되는 코드를 친구와 공유하세요.', roomNamePh:'예: 주말 계획', createRoom:'채팅방 만들기', creating:'만드는 중...', joinRoomTitle:'코드로 참여', joinRoomSub:'참여한 시점부터의 메시지를 보게 됩니다.', codePh:'예: K7P3QM', join:'참여하기', joining:'참여 중...', enterCode:'채팅방 코드를 입력하세요.', close:'닫기', members:'명', member:'명', copyCode:'코드 복사', copied:'복사됨!', typeMessage:'메시지를 입력하세요...', quietRoom:'조용하네요. 인사를 건네 보세요 — 여기서 대화가 시작됩니다.', youJoined:'이 채팅방에 참여했습니다', language:'언어', signOut:'로그아웃', signedInAs:'로그인 계정:', roomColor:'채팅방 색상', appearance:'외관', appearanceVal:'기기 설정을 따름', version:'버전', autoWord:'자동', themeLight:'라이트', themeDark:'다크' },
+};
+
+function detectLang() {
+  const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return STRINGS[nav] ? nav : 'en';
+}
+let langPref = localStorage.getItem('clubhouse_lang_pref') || 'auto';
+let currentLang = langPref === 'auto' ? detectLang() : langPref;
+function t(key) {
+  return (STRINGS[currentLang] && STRINGS[currentLang][key]) || STRINGS.en[key] || key;
+}
+function applyLangToDoc() {
+  document.documentElement.lang = currentLang;
+  document.documentElement.dir = RTL_LANGS.includes(currentLang) ? 'rtl' : 'ltr';
+}
+function setLangPref(pref) {
+  langPref = pref;
+  localStorage.setItem('clubhouse_lang_pref', pref);
+  currentLang = pref === 'auto' ? detectLang() : pref;
+  applyLangToDoc();
+  render();
+}
+applyLangToDoc();
+
+// ---- Theme: "Auto" now actually follows the device/browser's dark-mode preference ----
+let themePref = localStorage.getItem('clubhouse_theme_pref') || 'auto';
+const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function systemPrefersDark() {
+  return !!(darkMediaQuery && darkMediaQuery.matches);
+}
+function applyTheme() {
+  if (themePref === 'auto') {
+    if (systemPrefersDark()) document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+  } else if (themePref === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+}
+function setThemePref(pref) {
+  themePref = pref;
+  localStorage.setItem('clubhouse_theme_pref', pref);
+  applyTheme();
+  render();
+}
+applyTheme();
+// Live-update if the OS theme changes while "Auto" is selected
+if (darkMediaQuery) {
+  const handleSystemThemeChange = () => { if (themePref === 'auto') { applyTheme(); render(); } };
+  if (darkMediaQuery.addEventListener) darkMediaQuery.addEventListener('change', handleSystemThemeChange);
+  else if (darkMediaQuery.addListener) darkMediaQuery.addListener(handleSystemThemeChange);
+}
+
+function saveSession(username, token) {
+  localStorage.setItem('clubhouse_username', username);
+  localStorage.setItem('clubhouse_token', token);
+}
+function loadSession() {
+  const username = localStorage.getItem('clubhouse_username');
+  const token = localStorage.getItem('clubhouse_token');
+  if (username && token) return { username, token };
+  return null;
+}
+function clearSession() {
+  localStorage.removeItem('clubhouse_username');
+  localStorage.removeItem('clubhouse_token');
+}
+
+async function api(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth && me && me.token) headers['Authorization'] = 'Bearer ' + me.token;
+  const res = await fetch(API_BASE + path, {
+    method, headers, body: body ? JSON.stringify(body) : undefined,
+  });
+  let data;
+  try { data = await res.json(); } catch { data = {}; }
+  if (!res.ok) {
+    if (res.status === 401) {
+      clearSession(); me = null; screen = 'setup'; render();
+    }
+    throw new Error(data.error || 'Something went wrong.');
+  }
+  return data;
+}
+
+let me = null;
+let screen = 'loading';
+let homeTab = 'chats';
+let activeRoom = null;
+let pollTimer = null;
+let sendingMsg = false;
+let pendingGoogle = null;
+let roomsPreview = {};
+
+const app = document.getElementById('app');
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : str;
+  return d.innerHTML;
+}
+function initials(name) { return (name || '?').slice(0, 2).toUpperCase(); }
+function colorForName(name) {
+  const palette = ['#3B82F6','#F59E0B','#EC4899','#10B981','#8B5CF6','#EF4444','#14B8A6','#7C5CFC'];
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return palette[hash % palette.length];
+}
+function getMyAvatarColor() {
+  return localStorage.getItem('clubhouse_avatar_color') || colorForName(me.username);
+}
+function setMyAvatarColor(color) {
+  localStorage.setItem('clubhouse_avatar_color', color);
+}
+function fmtTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDate(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  if (isToday) return 'Today';
+  if (isYesterday) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// ============ TOAST ============
+function showToast(message, type = 'info') {
+  let container = document.querySelector('.toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  toast.innerHTML = `<span style="font-weight:700;${type==='success'?'color:var(--success)':type==='error'?'color:var(--danger)':'color:var(--primary)'}">${icons[type] || 'ℹ'}</span> ${escapeHtml(message)}`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('out');
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
+// ============ RENDER: SETUP ============
+function renderSetup() {
+  app.innerHTML = `
+    <div class="screen active" style="justify-content:center;">
+      <div class="setup-wrap">
+        <div class="glass-card-gradient-border">
+          <div class="glass-card setup-card" style="border:none;box-shadow:none;">
+            <div class="setup-logo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <div class="setup-title">${escapeHtml(t('appTitle'))}</div>
+            <div class="setup-subtitle">${escapeHtml(t('signInSub'))}</div>
+            <div id="googleBtnWrap" style="display:flex;justify-content:center;"></div>
+            <div class="field-err" id="setupErr" style="text-align:center;margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  renderGoogleButton();
+}
+function renderGoogleButton() {
+  if (!window.google || !window.google.accounts) { setTimeout(renderGoogleButton, 200); return; }
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
+  google.accounts.id.renderButton(document.getElementById('googleBtnWrap'), { theme: 'outline', size: 'large', shape: 'pill', width: 260 });
+}
+async function handleGoogleCredential(response) {
+  const err = document.getElementById('setupErr');
+  if (err) err.textContent = '';
+  try {
+    const data = await api('/auth/google', { method: 'POST', body: { idToken: response.credential }, auth: false });
+    if (data.isNew) {
+      pendingGoogle = { pendingToken: data.pendingToken, email: data.email };
+      screen = 'usernamePick'; render();
+    } else {
+      me = { username: data.username, token: data.token };
+      saveSession(me.username, me.token);
+      screen = 'home'; render();
+    }
+  } catch (e) { if (err) err.textContent = e.message; }
+}
+
+// ============ RENDER: USERNAME PICK ============
+function renderUsernamePick() {
+  app.innerHTML = `
+    <div class="screen active" style="justify-content:center;">
+      <div class="setup-wrap">
+        <div class="glass-card-gradient-border">
+          <div class="glass-card setup-card" style="border:none;box-shadow:none;">
+            <div class="setup-logo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div class="setup-title">${escapeHtml(t('pickNameTitle'))}</div>
+            <div class="setup-subtitle">${escapeHtml(t('pickNameSub'))}</div>
+            <div class="email-tag" style="margin:0 auto 20px;">
+              <div class="avatar-sm"></div>
+              ${escapeHtml(pendingGoogle.email)}
+            </div>
+            <input type="text" id="usernameInput" class="input-field" placeholder="${escapeHtml(t('usernamePh'))}" maxlength="20" autocomplete="off" style="margin-bottom:8px;" />
+            <div class="field-err" id="setupErr"></div>
+            <button class="btn-primary" id="setupSubmit" style="margin-top:8px;">${escapeHtml(t('claim'))}</button>
+            <p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">${escapeHtml(t('usernameRule'))}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  const input = document.getElementById('usernameInput');
+  const err = document.getElementById('setupErr');
+  const submit = document.getElementById('setupSubmit');
+  input.focus();
+  async function doSubmit() {
+    const val = input.value.trim();
+    if (!val) { err.textContent = t('typeUsernameFirst'); return; }
+    if (!/^[a-zA-Z0-9_]{2,20}$/.test(val)) { err.textContent = t('usernameRule'); return; }
+    submit.disabled = true; submit.textContent = t('claiming');
+    try {
+      const data = await api('/auth/google/complete', { method: 'POST', body: { pendingToken: pendingGoogle.pendingToken, username: val }, auth: false });
+      me = { username: data.username, token: data.token };
+      saveSession(me.username, me.token);
+      pendingGoogle = null; screen = 'home'; render();
+    } catch (e) {
+      err.textContent = e.message; submit.disabled = false; submit.textContent = t('claim');
+    }
+  }
+  submit.addEventListener('click', doSubmit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') doSubmit(); });
+}
+
+function signOut() {
+  clearSession(); me = null; screen = 'setup';
+  if (window.google && window.google.accounts) google.accounts.id.disableAutoSelect();
+  render();
+}
+
+// ============ DATA LAYER ============
+async function getFriendsRecord() { return await api('/friends'); }
+async function sendFriendRequest(toUsername) {
+  try { await api('/friends/request', { method: 'POST', body: { toUser: toUsername } }); return { ok: true }; }
+  catch (e) { return { ok: false, error: e.message }; }
+}
+async function acceptFriend(fromUser) { await api('/friends/accept', { method: 'POST', body: { fromUser } }); }
+async function declineFriend(fromUser) { await api('/friends/decline', { method: 'POST', body: { fromUser } }); }
+async function createRoom(name) {
+  const data = await api('/rooms/create', { method: 'POST', body: { name, color: DEFAULT_ROOM_COLOR } });
+  return data.room;
+}
+async function joinRoomByCode(code) {
+  try { const data = await api('/rooms/join', { method: 'POST', body: { code } }); return { ok: true, room: data.room }; }
+  catch (e) { return { ok: false, error: e.message }; }
+}
+async function getMyRooms() { const data = await api('/rooms'); return data.rooms; }
+async function setRoomColor(code, color) { return await api(`/rooms/${code}/color`, { method: 'POST', body: { color } }); }
+async function getVisibleMessages(code) {
+  const [roomData, msgData] = await Promise.all([ api(`/rooms/${code}`), api(`/rooms/${code}/messages`) ]);
+  return { room: roomData.room, messages: msgData.messages };
+}
+
+// ============ WEBSOCKET ============
+let ws = null;
+function connectWs() {
+  if (ws) { try { ws.close(); } catch {} }
+  ws = new WebSocket(API_BASE.replace(/^https?/, m => m === 'https' ? 'wss' : 'ws'));
+  ws.addEventListener('open', () => ws.send(JSON.stringify({ type: 'auth', token: me.token })));
+  ws.addEventListener('message', (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+    if (msg.type === 'subscribed' || msg.type === 'authed') return;
+    if (msg.type === 'message') {
+      roomsPreview[msg.roomCode] = { lastText: msg.text, lastSender: msg.sender, lastTime: msg.sent_at };
+      if (screen === 'chat' && msg.roomCode === activeRoom) appendLiveMessage(msg);
+      else if (screen === 'home' && homeTab === 'chats') renderHome();
+    }
+  });
+}
+function subscribeToRoom(code) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'subscribe', roomCode: code })); }
+function sendWsMessage(code, text) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'message', roomCode: code, text })); }
+function appendLiveMessage(m) {
+  const msgWrap = document.getElementById('chatMessages');
+  if (!msgWrap) return;
+  const mine = m.sender.toLowerCase() === me.username.toLowerCase();
+  const el = document.createElement('div');
+  el.className = 'msg-bubble ' + (mine ? 'msg-sent' : 'msg-received');
+  el.style.animation = 'fadeIn 0.3s ease';
+  el.innerHTML = `${mine ? '' : `<div class="msg-sender-name">${escapeHtml(m.sender)}</div>`}${escapeHtml(m.text)}<div class="msg-meta">${fmtTime(m.sent_at)}${mine ? '<span class="checkmarks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : ''}</div>`;
+  msgWrap.appendChild(el);
+  msgWrap.scrollTop = msgWrap.scrollHeight;
+}
+
+// ============ HOME DATA ============
+let friendsCache = { accepted: [], incoming: [], outgoing: [] };
+let roomsCache = [];
+
+async function refreshHomeData() {
+  try {
+    friendsCache = await getFriendsRecord();
+    roomsCache = await getMyRooms();
+    await Promise.all(roomsCache.map(async r => {
+      if (roomsPreview[r.code]) return;
+      try {
+        const data = await api(`/rooms/${r.code}/messages`);
+        const msgs = data.messages;
+        if (msgs.length) {
+          const last = msgs[msgs.length - 1];
+          roomsPreview[r.code] = { lastText: last.text, lastSender: last.sender, lastTime: last.sent_at };
+        }
+      } catch (e) {}
+    }));
+  } catch (e) {}
+}
+
+function renderHome() {
+  app.innerHTML = `
+    <div class="screen active" id="homeScreen">
+      <div class="home-header">
+        <div class="home-title">${escapeHtml(t('appTitle'))}</div>
+        ${homeTab === 'chats' ? `<div class="home-avatar" id="myAvatarBtn" style="background:${getMyAvatarColor()};cursor:pointer;">${escapeHtml(initials(me.username))}</div>` : ''}
+      </div>
+      <div id="homeBody" style="flex:1;overflow-y:auto;min-height:0;padding-bottom:90px;"></div>
+      <div class="bottom-nav">
+        <button class="nav-tab ${homeTab==='chats'?'active':''}" data-tab="chats">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          ${escapeHtml(t('chats'))}
+        </button>
+        <button class="nav-tab ${homeTab==='friends'?'active':''}" data-tab="friends">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          ${escapeHtml(t('friends'))}
+          <span class="nav-dot ${friendsCache.incoming.length ? 'visible' : ''}"></span>
+        </button>
+        <button class="nav-tab ${homeTab==='settings'?'active':''}" data-tab="settings">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          ${escapeHtml(t('settings'))}
+        </button>
+      </div>
+    </div>
+  `;
+  document.querySelectorAll('.nav-tab').forEach(el => el.addEventListener('click', () => {
+    if (homeTab === el.dataset.tab) return;
+    homeTab = el.dataset.tab; renderHomeBody();
+    document.querySelectorAll('.nav-tab').forEach(t2 => t2.classList.toggle('active', t2 === el));
+    updateHeaderAvatar();
+  }));
+  updateHeaderAvatar();
+
+  renderHomeBody();
+}
+
+// Shows the profile avatar in the header only on the Chats tab, and wires its click.
+function updateHeaderAvatar() {
+  const header = document.querySelector('.home-header');
+  if (!header) return;
+  let btn = document.getElementById('myAvatarBtn');
+  if (homeTab === 'chats') {
+    if (!btn) {
+      btn = document.createElement('div');
+      btn.className = 'home-avatar';
+      btn.id = 'myAvatarBtn';
+      btn.style.cursor = 'pointer';
+      header.appendChild(btn);
+    }
+    btn.style.background = getMyAvatarColor();
+    btn.textContent = initials(me.username);
+    btn.onclick = openProfileModal;
+  } else if (btn) {
+    btn.remove();
+  }
+}
+
+// Re-renders just the tab content with a small fade so switching Chats/Friends/Settings feels animated
+// instead of an instant, jarring swap.
+function renderHomeBody() {
+  const body = document.getElementById('homeBody');
+  if (!body) return;
+  body.classList.remove('home-body-fade');
+  void body.offsetWidth; // force reflow so the animation replays
+  if (homeTab === 'chats') { body.innerHTML = renderChatsSection(); attachChatsHandlers(); }
+  else if (homeTab === 'friends') { body.innerHTML = renderFriendsSection(); attachFriendHandlers(); }
+  else { body.innerHTML = renderSettingsSection(); attachSettingsHandlers(); }
+  body.classList.add('home-body-fade');
+}
+
+function renderChatsSection() {
+  let html = `
+    <div class="stories-row">
+      <div class="story-item" id="openCreateRoom" style="cursor:pointer;">
+        <div class="story-ring">
+          <div class="story-inner" style="background:linear-gradient(135deg,var(--primary),var(--primary-blue));font-size:24px;">+</div>
+        </div>
+        <span class="story-name">${escapeHtml(t('newRoom'))}</span>
+      </div>
+  `;
+  roomsCache.forEach(r => {
+    const color = r.color || DEFAULT_ROOM_COLOR;
+    html += `
+      <div class="story-item" data-code="${escapeHtml(r.code)}">
+        <div class="story-ring online">
+          <div class="story-inner" style="background:${color};">${escapeHtml(initials(r.name))}</div>
+        </div>
+        <span class="story-name">${escapeHtml(r.name)}</span>
+      </div>`;
+  });
+  html += `</div>`;
+
+  html += `<div class="section-title">${escapeHtml(t('chats'))}</div>`;
+
+  if (roomsCache.length === 0) {
+    html += `<div class="empty-note">${escapeHtml(t('noRoomsYet'))}</div>`;
+    return html;
+  }
+  roomsCache.forEach(r => {
+    const color = r.color || DEFAULT_ROOM_COLOR;
+    const preview = roomsPreview[r.code];
+    const subLine = preview ? `${escapeHtml(preview.lastSender)}: ${escapeHtml(preview.lastText)}` : `${r.member_count} ${r.member_count === 1 ? t('member') : t('members')}`;
+    const timeLabel = preview ? fmtTime(preview.lastTime) : '';
+    html += `
+      <div class="glass-card glass-card-hover chat-row" data-code="${escapeHtml(r.code)}">
+        <div class="chat-avatar" style="background:${color};">${escapeHtml(initials(r.name))}</div>
+        <div class="chat-info">
+          <div class="chat-name">${escapeHtml(r.name)}</div>
+          <div class="chat-preview">${subLine}</div>
+        </div>
+        <div class="chat-meta">
+          <div class="chat-time">${timeLabel}</div>
+        </div>
+      </div>`;
+  });
+  return html;
+}
+function attachChatsHandlers() {
+  document.getElementById('openCreateRoom').addEventListener('click', openCreateRoomModal);
+  document.querySelectorAll('.story-item[data-code]').forEach(el => {
+    el.addEventListener('click', () => { activeRoom = el.dataset.code; screen = 'chat'; render(); });
+  });
+  document.querySelectorAll('.chat-row[data-code]').forEach(el => {
+    el.addEventListener('click', () => { activeRoom = el.dataset.code; screen = 'chat'; render(); });
+  });
+}
+
+function renderFriendsSection() {
+  let html = `
+    <div class="add-friend-bar">
+      <button class="btn-ghost" id="openJoinRoom" style="flex:1;">${escapeHtml(t('joinWithCode'))}</button>
+      <button class="btn-primary" id="openAddFriend" style="flex:1;">+ ${escapeHtml(t('addFriend'))}</button>
+    </div>
+  `;
+  if (friendsCache.incoming.length > 0) {
+    html += `<div class="section-title">${escapeHtml(t('requests'))}</div>`;
+    friendsCache.incoming.forEach(u => {
+      html += `
+        <div class="glass-card friend-row">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="chat-avatar" style="width:40px;height:40px;font-size:14px;background:${colorForName(u)};">${escapeHtml(initials(u))}</div>
+            <div>
+              <div style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(u)}</div>
+              <div style="font-size:12px;color:var(--text-secondary);">@${escapeHtml(u)}</div>
+            </div>
+          </div>
+          <div class="friend-actions">
+            <button class="btn-accept-green accept-btn" data-user="${escapeHtml(u)}">${escapeHtml(t('accept'))}</button>
+            <button class="btn-decline-ghost decline-btn" data-user="${escapeHtml(u)}">${escapeHtml(t('decline'))}</button>
+          </div>
+        </div>`;
+    });
+  }
+  html += `<div class="section-title">${escapeHtml(t('friends'))}</div>`;
+  if (friendsCache.accepted.length === 0) {
+    html += `<div class="empty-note">${escapeHtml(t('noFriendsYet'))}</div>`;
+  } else {
+    friendsCache.accepted.forEach(u => {
+      html += `
+        <div class="glass-card friend-row" style="cursor:pointer;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="chat-avatar" style="width:40px;height:40px;font-size:14px;background:${colorForName(u)};">${escapeHtml(initials(u))}</div>
+            <div style="font-size:15px;font-weight:500;color:var(--text);">${escapeHtml(u)}</div>
+          </div>
+        </div>`;
+    });
+  }
+  if (friendsCache.outgoing.length > 0) {
+    html += `<div class="section-title">${escapeHtml(t('sent'))}</div>`;
+    friendsCache.outgoing.forEach(u => {
+      html += `
+        <div class="glass-card friend-row">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="chat-avatar" style="width:40px;height:40px;font-size:14px;background:${colorForName(u)};">${escapeHtml(initials(u))}</div>
+            <div style="font-size:15px;font-weight:500;color:var(--text);">${escapeHtml(u)}</div>
+          </div>
+          <span class="pending-tag">${escapeHtml(t('pending'))}</span>
+        </div>`;
+    });
+  }
+  return html;
+}
+function attachFriendHandlers() {
+  document.getElementById('openAddFriend').addEventListener('click', openAddFriendModal);
+  document.getElementById('openJoinRoom').addEventListener('click', openJoinRoomModal);
+  document.querySelectorAll('.accept-btn').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    await acceptFriend(btn.dataset.user);
+    showToast(t('accept') + ' — ' + btn.dataset.user, 'success');
+    await refreshHomeData(); renderHomeBody();
+  }));
+  document.querySelectorAll('.decline-btn').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    await declineFriend(btn.dataset.user);
+    showToast(t('decline') + ' — ' + btn.dataset.user, 'info');
+    await refreshHomeData(); renderHomeBody();
+  }));
+}
+
+function renderSettingsSection() {
+  const langLabel = langPref === 'auto'
+    ? `${escapeHtml(t('autoWord'))} · ${escapeHtml(SUPPORTED_LANGS.find(l=>l.code===currentLang).label)}`
+    : escapeHtml(SUPPORTED_LANGS.find(l=>l.code===currentLang).label);
+  const themeLabel = themePref === 'auto'
+    ? `${escapeHtml(t('autoWord'))} · ${escapeHtml(t('appearanceVal'))}`
+    : themePref === 'dark' ? escapeHtml(t('themeDark')) : escapeHtml(t('themeLight'));
+  return `
+    <div class="glass-card settings-profile">
+      <div class="settings-avatar-lg" style="background:${getMyAvatarColor()};">${escapeHtml(initials(me.username))}</div>
+      <div class="settings-name">${escapeHtml(me.username)}</div>
+      <div class="settings-handle">@${escapeHtml(me.username)}</div>
+    </div>
+    <div class="section-title">${escapeHtml(t('settings'))}</div>
+    <div class="glass-card settings-row" id="settingsLangRow">
+      <div class="settings-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </div>
+      <div class="settings-label">${escapeHtml(t('language'))}</div>
+      <div class="settings-val">${langLabel}</div>
+    </div>
+    <div class="glass-card settings-row" id="settingsThemeRow">
+      <div class="settings-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </div>
+      <div class="settings-label">${escapeHtml(t('appearance'))}</div>
+      <div class="settings-val">${themeLabel}</div>
+    </div>
+    <div style="padding-top:20px;">
+      <button class="btn-ghost" id="signOutBtn" style="width:100%;color:var(--danger);border-color:rgba(239,68,68,0.3);">${escapeHtml(t('signOut'))}</button>
+    </div>
+  `;
+}
+function attachSettingsHandlers() {
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
+  document.getElementById('settingsLangRow').addEventListener('click', openLangModal);
+  document.getElementById('settingsThemeRow').addEventListener('click', openThemeModal);
+}
+
+// ============ MODALS ============
+function openModal(innerHtml) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-overlay';
+  backdrop.innerHTML = `<div class="modal-sheet">${innerHtml}</div>`;
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add('active'));
+  return backdrop;
+}
+function closeModal() {
+  const b = document.querySelector('.modal-overlay');
+  if (b) { b.classList.remove('active'); setTimeout(() => b.remove(), 300); }
+}
+
+function openLangModal() {
+  let html = `<div class="modal-handle"></div><button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button><h3 class="modal-title">${escapeHtml(t('language'))}</h3>`;
+  const autoLabel = `${t('autoWord')} (${SUPPORTED_LANGS.find(l=>l.code===detectLang()).label})`;
+  html += `<div class="lang-option ${langPref==='auto'?'selected':''}" data-pref="auto">${escapeHtml(autoLabel)}${langPref==='auto'?' ✓':''}</div>`;
+  SUPPORTED_LANGS.forEach(l => {
+    html += `<div class="lang-option ${langPref===l.code?'selected':''}" data-pref="${l.code}">${escapeHtml(l.label)}${langPref===l.code?' ✓':''}</div>`;
+  });
+  openModal(html);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  document.querySelectorAll('.lang-option').forEach(el => el.addEventListener('click', () => { closeModal(); setLangPref(el.dataset.pref); }));
+}
+
+function openThemeModal() {
+  const options = [
+    { pref: 'auto', label: `${t('autoWord')} · ${t('appearanceVal')}` },
+    { pref: 'light', label: t('themeLight') },
+    { pref: 'dark', label: t('themeDark') },
+  ];
+  let html = `<div class="modal-handle"></div><button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button><h3 class="modal-title">${escapeHtml(t('appearance'))}</h3>`;
+  options.forEach(o => {
+    html += `<div class="lang-option ${themePref===o.pref?'selected':''}" data-pref="${o.pref}">${escapeHtml(o.label)}${themePref===o.pref?' ✓':''}</div>`;
+  });
+  openModal(html);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  document.querySelectorAll('.lang-option').forEach(el => {
+    el.addEventListener('click', () => { closeModal(); setThemePref(el.dataset.pref); });
+  });
+}
+
+function openAddFriendModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button>
+    <h3 class="modal-title">${escapeHtml(t('addFriendTitle'))}</h3>
+    <p class="modal-subtitle">${escapeHtml(t('addFriendSub'))}</p>
+    <input type="text" id="friendInput" class="input-field" placeholder="${escapeHtml(t('friendPh'))}" autocomplete="off" />
+    <div class="field-err" id="friendErr"></div>
+    <button class="btn-primary" id="sendReqBtn">${escapeHtml(t('sendRequest'))}</button>
+  `);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  const input = document.getElementById('friendInput'); input.focus();
+  const err = document.getElementById('friendErr');
+  const btn = document.getElementById('sendReqBtn');
+  async function submit() {
+    const val = input.value.trim();
+    if (!val) { err.textContent = t('typeUsername'); return; }
+    btn.disabled = true; btn.textContent = t('sending');
+    const res = await sendFriendRequest(val);
+    if (!res.ok) { err.textContent = res.error; btn.disabled = false; btn.textContent = t('sendRequest'); return; }
+    showToast('Friend request sent!', 'success');
+    await refreshHomeData(); closeModal(); renderHomeBody();
+  }
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+function openCreateRoomModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button>
+    <h3 class="modal-title">${escapeHtml(t('newRoomTitle'))}</h3>
+    <p class="modal-subtitle">${escapeHtml(t('newRoomSub'))}</p>
+    <input type="text" id="roomNameInput" class="input-field" placeholder="${escapeHtml(t('roomNamePh'))}" autocomplete="off" maxlength="40" />
+    <button class="btn-primary" id="createRoomBtn">${escapeHtml(t('createRoom'))}</button>
+  `);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  const input = document.getElementById('roomNameInput'); input.focus();
+  const btn = document.getElementById('createRoomBtn');
+  async function submit() {
+    if (!input.value.trim()) return;
+    btn.disabled = true; btn.textContent = t('creating');
+    const room = await createRoom(input.value.trim());
+    await refreshHomeData(); closeModal();
+    activeRoom = room.code; screen = 'chat'; render();
+  }
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+function openJoinRoomModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button>
+    <h3 class="modal-title">${escapeHtml(t('joinRoomTitle'))}</h3>
+    <p class="modal-subtitle">${escapeHtml(t('joinRoomSub'))}</p>
+    <input type="text" id="codeInput" class="input-field" placeholder="${escapeHtml(t('codePh'))}" autocomplete="off" maxlength="6" style="text-transform:uppercase;letter-spacing:0.1em;" />
+    <div class="field-err" id="codeErr"></div>
+    <button class="btn-primary" id="joinRoomBtn">${escapeHtml(t('join'))}</button>
+  `);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  const input = document.getElementById('codeInput'); input.focus();
+  const err = document.getElementById('codeErr');
+  const btn = document.getElementById('joinRoomBtn');
+  async function submit() {
+    const val = input.value.trim();
+    if (!val) { err.textContent = t('enterCode'); return; }
+    btn.disabled = true; btn.textContent = t('joining');
+    const res = await joinRoomByCode(val);
+    if (!res.ok) { err.textContent = res.error; btn.disabled = false; btn.textContent = t('join'); return; }
+    showToast('Joined room!', 'success');
+    await refreshHomeData(); closeModal();
+    activeRoom = res.room.code; screen = 'chat'; render();
+  }
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+function openProfileModal() {
+  let html = `
+    <div class="modal-handle"></div>
+    <button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button>
+    <div style="text-align:center;padding-bottom:8px;">
+      <div class="settings-avatar-lg" id="profileAvatarPreview" style="background:${getMyAvatarColor()};">${escapeHtml(initials(me.username))}</div>
+      <div class="settings-name">${escapeHtml(me.username)}</div>
+      <div class="settings-handle">@${escapeHtml(me.username)}</div>
+    </div>
+    <div class="section-title">${escapeHtml(t('roomColor'))}</div>
+    <div class="color-grid" id="profileColorGrid">
+  `;
+  ROOM_COLOR_PRESETS.forEach(c => {
+    html += `<div class="color-swatch ${c.toLowerCase()===getMyAvatarColor().toLowerCase()?'selected':''}" data-color="${c}" style="background:${c};"></div>`;
+  });
+  html += `</div>`;
+  openModal(html);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  document.querySelectorAll('#profileColorGrid .color-swatch').forEach(el => {
+    el.addEventListener('click', () => {
+      const color = el.dataset.color;
+      setMyAvatarColor(color);
+      document.querySelectorAll('#profileColorGrid .color-swatch').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+      const preview = document.getElementById('profileAvatarPreview');
+      if (preview) preview.style.background = color;
+      updateHeaderAvatar();
+    });
+  });
+}
+
+  let html = `
+    <div class="modal-handle"></div>
+    <button class="modal-close-btn" id="closeModal">${escapeHtml(t('close'))}</button>
+    <h3 class="modal-title">${escapeHtml(t('roomColor'))}</h3>
+    <div class="color-grid" id="colorGrid">
+  `;
+  ROOM_COLOR_PRESETS.forEach(c => {
+    html += `<div class="color-swatch ${c.toLowerCase()===room.color.toLowerCase()?'selected':''}" data-color="${c}" style="background:${c};"></div>`;
+  });
+  html += `</div>`;
+  openModal(html);
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  document.querySelectorAll('.color-swatch').forEach(el => {
+    el.addEventListener('click', async () => {
+      const color = el.dataset.color;
+      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+      try {
+        await setRoomColor(room.code, color);
+        room.color = color;
+        closeModal();
+        renderChat(room);
+      } catch (e) {}
+    });
+  });
+};
+
+// ============ RENDER: CHAT ============
+async function renderChat(preloadedRoom) {
+  let room, messages;
+  try {
+    if (preloadedRoom) {
+      const data = await api(`/rooms/${activeRoom}/messages`);
+      room = preloadedRoom; messages = data.messages;
+    } else {
+      const data = await getVisibleMessages(activeRoom);
+      room = data.room; messages = data.messages;
+    }
+  } catch (e) { screen = 'home'; render(); return; }
+  if (!room.color) room.color = DEFAULT_ROOM_COLOR;
+
+  app.innerHTML = `
+    <div class="screen active" id="chatScreen">
+      <div class="glass-card chat-header-glass">
+        <button class="chat-header-back" id="backBtn">←</button>
+        <div class="chat-avatar" style="width:44px;height:44px;background:${room.color};flex-shrink:0;">${escapeHtml(initials(room.name))}</div>
+        <div class="chat-header-info">
+          <div class="chat-header-name">${escapeHtml(room.name)}</div>
+          <div class="chat-header-status">
+            <div class="room-color-dot" style="background:${room.color};color:${room.color};"></div>
+            ${room.member_count} ${room.member_count === 1 ? escapeHtml(t('member')) : escapeHtml(t('members'))}
+          </div>
+        </div>
+        <div class="chat-header-actions">
+          <button class="header-action-btn" id="colorBtn" title="${escapeHtml(t('roomColor'))}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.01 17.461 2 12 2z"/></svg>
+          </button>
+          <button class="header-action-btn" id="copyCodeBtn" title="${escapeHtml(t('copyCode'))}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="messages-area" id="chatMessages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="msgInput" class="chat-input" placeholder="${escapeHtml(t('typeMessage'))}" autocomplete="off" />
+        <button class="send-btn" id="sendBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  `;
+
+  const msgWrap = document.getElementById('chatMessages');
+  if (messages.length === 0) {
+    msgWrap.innerHTML = `<div class="empty-chat">${escapeHtml(t('quietRoom'))}</div>`;
+  } else {
+    let html = `<div class="join-marker-glass">${escapeHtml(t('youJoined'))}</div>`;
+    let lastDate = null;
+    messages.forEach(m => {
+      const mine = m.sender.toLowerCase() === me.username.toLowerCase();
+      const msgDate = fmtDate(m.sent_at);
+      if (msgDate !== lastDate) {
+        html += `<div class="date-separator"><span>${msgDate}</span></div>`;
+        lastDate = msgDate;
+      }
+      html += `
+        <div class="msg-bubble ${mine ? 'msg-sent' : 'msg-received'}">
+          ${mine ? '' : `<div class="msg-sender-name">${escapeHtml(m.sender)}</div>`}
+          ${escapeHtml(m.text)}
+          <div class="msg-meta">${fmtTime(m.sent_at)}${mine ? '<span class="checkmarks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : ''}</div>
+        </div>`;
+    });
+    msgWrap.innerHTML = html;
+  }
+  msgWrap.scrollTop = msgWrap.scrollHeight;
+
+  subscribeToRoom(activeRoom);
+  delete roomsPreview[activeRoom];
+
+  document.getElementById('backBtn').addEventListener('click', () => { activeRoom = null; screen = 'home'; render(); });
+  document.getElementById('colorBtn').addEventListener('click', () => openRoomColorModal(room));
+  document.getElementById('copyCodeBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(room.code);
+      showToast(t('copied'), 'success');
+    } catch (e) { alert(room.code); }
+  });
+
+  const input = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+  function doSend() {
+    const val = input.value.trim();
+    if (!val || sendingMsg) return;
+    sendingMsg = true; input.value = '';
+    sendWsMessage(activeRoom, val);
+    sendingMsg = false;
+  }
+  sendBtn.addEventListener('click', doSend);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') doSend(); });
+  input.focus();
+}
+
+// ============ MAIN RENDER ============
+function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    if (document.querySelector('.modal-overlay')) return;
+    if (screen === 'home') {
+      // Only re-render the tab body (not the whole screen) so the poll refresh
+      // doesn't cause a visible jump/flicker every few seconds.
+      await refreshHomeData();
+      const homeScreenEl = document.getElementById('homeScreen');
+      if (homeScreenEl) renderHomeBody();
+      else renderHome();
+    }
+  }, 6000);
+}
+async function render() {
+  if (screen === 'loading') { stopPolling(); renderLoading(); }
+  else if (screen === 'setup') { stopPolling(); renderSetup(); }
+  else if (screen === 'usernamePick') { stopPolling(); renderUsernamePick(); }
+  else if (screen === 'home') { await refreshHomeData(); renderHome(); startPolling(); }
+  else if (screen === 'chat') { await renderChat(); startPolling(); }
+}
+
+function renderLoading() {
+  app.innerHTML = `
+    <div class="loading-screen">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">${escapeHtml(t('appTitle'))}</div>
+    </div>
+  `;
+}
+
+// ============ BOOT ============
+async function boot() {
+  renderLoading();
+  const saved = loadSession();
+  if (saved) {
+    me = saved;
+    try { await api('/friends'); connectWs(); screen = 'home'; }
+    catch (e) { me = null; screen = 'setup'; }
+  } else { screen = 'setup'; }
+  render();
+}
+boot();
+</script>
+</body>
+</html>
