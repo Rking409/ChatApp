@@ -136,6 +136,14 @@ async function initSchema() {
     )
   `);
 
+  await run(`
+    CREATE TABLE IF NOT EXISTS transfer_codes (
+      code       TEXT PRIMARY KEY,
+      token      TEXT,
+      created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)
+    )
+  `);
+
   // ─── MIGRATIONS ──────────────────────────────────────────────────────────────
 
   // Migrate: add columns that may not exist (added after initial schema)
@@ -414,6 +422,23 @@ const keyQueries = {
   },
 };
 
+// ─── TRANSFER CODE QUERIES ─────────────────────────────────────────────────────
+
+const transferQueries = {
+  async insert(code) {
+    await run(`INSERT INTO transfer_codes (code) VALUES ($1)`, [code]);
+  },
+  async claim(code, token) {
+    await run(`UPDATE transfer_codes SET token = $1 WHERE code = $2 AND token IS NULL`, [token, code]);
+  },
+  async getToken(code) {
+    return get(`SELECT token FROM transfer_codes WHERE code = $1 AND created_at > (EXTRACT(EPOCH FROM NOW()) * 1000 - 120000)`, [code]);
+  },
+  async cleanup() {
+    await run(`DELETE FROM transfer_codes WHERE created_at < (EXTRACT(EPOCH FROM NOW()) * 1000 - 120000)`);
+  },
+};
+
 // ─── ADMIN QUERIES ─────────────────────────────────────────────────────────────
 
 const adminQueries = {
@@ -474,6 +499,7 @@ module.exports = {
   messageQueries,
   dailyPhotoQueries,
   keyQueries,
+  transferQueries,
   adminQueries,
   generateRoomCode,
 };

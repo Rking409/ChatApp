@@ -18,6 +18,7 @@ const {
   messageQueries,
   dailyPhotoQueries,
   keyQueries,
+  transferQueries,
   adminQueries,
   generateRoomCode,
   initSchema,
@@ -120,6 +121,7 @@ app.use(cors({
 }));
 
 app.use('/uploads', express.static(UPLOAD_DIR));
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 app.get('/admin', (req, res) => {
   res.setHeader('Content-Security-Policy',
     "default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
@@ -431,6 +433,79 @@ app.post('/auth/google/complete', authLimiter, async (req, res) => {
   const token = signToken(username);
   const user = await userQueries.findByUsername(username);
   res.json({ ok: true, username, token, avatar_url: user.avatar_url || null });
+});
+
+// ─── SESSION TRANSFER (QR code sign-in) ──────────────────────────────────────
+
+const TRANSFER_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+app.post('/auth/transfer/init', authLimiter, async (req, res) => {
+  transferQueries.cleanup().catch(() => {});
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () => TRANSFER_CODE_CHARS[Math.floor(Math.random() * TRANSFER_CODE_CHARS.length)]).join('');
+  } while ((await transferQueries.getToken(code))?.token);
+  await transferQueries.insert(code);
+  res.json({ code });
+});
+
+app.post('/auth/transfer/link', requireAuth, async (req, res) => {
+  const { code } = req.body || {};
+  if (!code || typeof code !== 'string') return res.status(400).json({ error: 'Code required' });
+  const token = signToken(req.username);
+  await transferQueries.claim(code.toUpperCase(), token);
+  res.json({ ok: true });
+});
+
+app.post('/auth/transfer/claim', async (req, res) => {
+  const { code } = req.body || {};
+  if (!code || typeof code !== 'string') return res.status(400).json({ error: 'Code required' });
+  const row = await transferQueries.getToken(code.toUpperCase());
+  res.json({ token: row?.token || null });
+});
+
+// ─── PROFILE SHARING (QR code with AES-256-CBC) ──────────────────────────────
+
+const PROFILE_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+function encryptProfileToken(username) {
+  const key = crypto.createHash('sha256').update(JWT_SECRET).digest();
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  let enc = cipher.update(JSON.stringify({ username, exp: Date.now() + PROFILE_TOKEN_EXPIRY_MS }), 'utf8', 'hex');
+  enc += cipher.final('hex');
+  return iv.toString('hex') + ':' + enc;
+}
+
+function decryptProfileToken(token) {
+  const key = crypto.createHash('sha256').update(JWT_SECRET).digest();
+  const parts = token.split(':');
+  if (parts.length !== 2) throw new Error('Invalid token format');
+  const iv = Buffer.from(parts[0], 'hex');
+  const enc = parts[1];
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  let dec = decipher.update(enc, 'hex', 'utf8');
+  dec += decipher.final('utf8');
+  return JSON.parse(dec);
+}
+
+app.post('/auth/profile/share', requireAuth, async (req, res) => {
+  const token = encryptProfileToken(req.username);
+  res.json({ token });
+});
+
+app.get('/auth/profile/resolve', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+  try {
+    const payload = decryptProfileToken(token);
+    if (!payload.username || !payload.exp || Date.now() > payload.exp) throw new Error('Expired');
+    const user = await userQueries.findByUsername(payload.username);
+    if (!user) return res.json({ exists: false });
+    res.json({ exists: true, username: user.username, avatar_url: user.avatar_url });
+  } catch {
+    res.json({ exists: false });
+  }
 });
 
 // ─── FRIENDS ──────────────────────────────────────────────────────────────────
