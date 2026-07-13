@@ -10,6 +10,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
 const { OAuth2Client } = require('google-auth-library');
 const {
   userQueries,
@@ -54,6 +55,17 @@ if (!ADMIN_TOKEN_HASH) {
 }
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// ─── CLOUDINARY: image hosting (avatars, moments) ───────────────────────────
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config(true); // config from CLOUDINARY_URL
+} else if (process.env.CLOUDINARY_CLOUD_NAME) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
 // ─── MULTER: profile picture uploads ──────────────────────────────────────────
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
@@ -606,6 +618,49 @@ app.post('/rooms/:code/color', requireAuth, async (req, res) => {
   res.json({ ok: true, color });
 });
 
+app.post('/rooms/:code/name', requireAuth, async (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const { name } = req.body || {};
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 40) {
+    return res.status(400).json({ error: 'Name must be 1-40 characters.' });
+  }
+  const member = await roomQueries.getMember(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+  const room = await roomQueries.findByCode(code);
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+  await roomQueries.setName(name.trim(), code);
+  res.json({ ok: true, name: name.trim() });
+});
+
+app.post('/rooms/:code/icon', requireAuth, async (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const { emoji } = req.body || {};
+  if (typeof emoji !== 'string' || !emoji.trim()) {
+    return res.status(400).json({ error: 'Emoji is required.' });
+  }
+  const member = await roomQueries.getMember(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+  const room = await roomQueries.findByCode(code);
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+  await roomQueries.setIcon(emoji.trim(), code);
+  res.json({ ok: true, emoji: emoji.trim() });
+});
+
+app.post('/rooms/:code/background', requireAuth, async (req, res) => {
+  const code = req.params.code.slice(0, MAX_ROOM_CODE_LEN).toUpperCase();
+  const { background } = req.body || {};
+  if (typeof background !== 'string') {
+    return res.status(400).json({ error: 'Background value is required.' });
+  }
+  const member = await roomQueries.getMember(code, req.username);
+  if (!member) return res.status(403).json({ error: 'Not a member of this room.' });
+  const room = await roomQueries.findByCode(code);
+  if (!room) return res.status(404).json({ error: 'Room not found.' });
+  const val = background.trim() || '';
+  await roomQueries.setBackground(val, code);
+  res.json({ ok: true, background: val });
+});
+
 app.post('/rooms/join', requireAuth, async (req, res) => {
   const raw = req.body && req.body.code;
   if (typeof raw !== 'string' || !raw.trim() || raw.trim().length > MAX_ROOM_CODE_LEN) {
@@ -661,9 +716,21 @@ app.post('/users/avatar', requireAuth, (req, res, next) => {
       return res.status(400).json({ error: err.message || 'Upload failed' });
     }
     if (!req.file) return res.status(400).json({ error: 'No file provided' });
-    const avatarUrl = `/uploads/${req.file.filename}`;
-    await userQueries.setAvatarUrl(avatarUrl, req.username);
-    res.json({ ok: true, avatar_url: avatarUrl });
+    try {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: 'chatapp_avatars',
+        public_id: req.username,
+        overwrite: true,
+        width: 400, height: 400, crop: 'fill',
+        format: 'webp',
+      });
+      await userQueries.setAvatarUrl(result.secure_url, req.username);
+      res.json({ ok: true, avatar_url: result.secure_url });
+    } catch (cloudErr) {
+      const avatarUrl = `/uploads/${req.file.filename}`;
+      await userQueries.setAvatarUrl(avatarUrl, req.username);
+      res.json({ ok: true, avatar_url: avatarUrl, note: 'stored locally' });
+    }
   });
 });
 

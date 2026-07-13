@@ -188,6 +188,12 @@ async function initSchema() {
   if (!roomColNames.includes('color')) {
     await run(`ALTER TABLE rooms ADD COLUMN color TEXT NOT NULL DEFAULT '#3B82F6'`);
   }
+  if (!roomColNames.includes('icon_emoji')) {
+    await run(`ALTER TABLE rooms ADD COLUMN icon_emoji TEXT`);
+  }
+  if (!roomColNames.includes('background')) {
+    await run(`ALTER TABLE rooms ADD COLUMN background TEXT`);
+  }
 }
 
 // ─── USER QUERIES ─────────────────────────────────────────────────────────────
@@ -290,12 +296,21 @@ const roomQueries = {
       FROM rooms r
       JOIN room_members rm ON rm.room_code = r.code AND LOWER(rm.username) = LOWER($1)
       JOIN room_members rm2 ON rm2.room_code = r.code
-      GROUP BY r.id, r.code, r.name, r.owner, r.color, r.created_at
+      GROUP BY r.id, r.code, r.name, r.owner, r.color, r.icon_emoji, r.background, r.created_at
       ORDER BY r.created_at DESC
     `, [username]);
   },
   async setColor(color, code) {
     await run(`UPDATE rooms SET color = $1 WHERE code = $2`, [color, code]);
+  },
+  async setName(name, code) {
+    await run(`UPDATE rooms SET name = $1 WHERE code = $2`, [name, code]);
+  },
+  async setIcon(emoji, code) {
+    await run(`UPDATE rooms SET icon_emoji = $1 WHERE code = $2`, [emoji, code]);
+  },
+  async setBackground(background, code) {
+    await run(`UPDATE rooms SET background = $1 WHERE code = $2`, [background, code]);
   },
   async getMembersExcept(roomCode, username) {
     return all(`SELECT username FROM room_members WHERE room_code = $1 AND LOWER(username) != LOWER($2)`, [roomCode, username]);
